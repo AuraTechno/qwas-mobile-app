@@ -13,7 +13,7 @@ import { Icon } from '@/components/icon';
 import { useTheme } from '@/hooks/use-theme';
 import { Spacing } from '@/constants/theme';
 import { apiGet, apiPost } from '@/api/client';
-import type { User, Chat } from '@/types';
+import type { User } from '@/types';
 
 export default function ContactsScreen() {
   const router = useRouter();
@@ -31,8 +31,8 @@ export default function ContactsScreen() {
     setLoading(true);
     const t = setTimeout(async () => {
       try {
-        const data = await apiGet<User[]>(`/api/v1/users/search?q=${encodeURIComponent(query.trim())}`);
-        setUsers(data);
+        const data = await apiGet<{ users: User[] }>(`/api/v1/users/search?q=${encodeURIComponent(query.trim())}`);
+        setUsers(data.users || []);
       } catch (e) {
         console.error(e);
       } finally {
@@ -44,11 +44,13 @@ export default function ContactsScreen() {
 
   async function startChat(user: User) {
     try {
-      const chat = await apiPost<Chat>('/api/v1/chats', {
+      const data = await apiPost<{ chat: { id: number } }>('/api/v1/chats', {
         type: 'private',
         username: user.username,
       });
-      router.push({ pathname: '/(main)/chats/[id]', params: { id: String(chat.id) } });
+      if (data.chat?.id) {
+        router.push({ pathname: '/(main)/chats/[id]', params: { id: String(data.chat.id) } });
+      }
     } catch (e) {
       console.error(e);
     }

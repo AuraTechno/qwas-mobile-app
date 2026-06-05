@@ -120,6 +120,14 @@ export async function api<T = any>(path: string, opts: RequestOptions = {}): Pro
       throw new ApiError(res.status, data, message);
     }
 
+    if (data && typeof data === 'object' && !Array.isArray(data) && 'ok' in data) {
+      const { ok, error, ...rest } = data as Record<string, any>;
+      if (ok === false) {
+        throw new ApiError(res.status, data, error || `HTTP ${res.status}`);
+      }
+      return rest as T;
+    }
+
     return data as T;
   } catch (err: any) {
     if (err instanceof ApiError) throw err;

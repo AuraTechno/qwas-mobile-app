@@ -11,6 +11,7 @@ import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 
 import { useAuth } from '@/store/auth';
+import { useWebSocket } from '@/store/websocket';
 import { useTheme, useColorSchemeName } from '@/hooks/use-theme';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -19,6 +20,16 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const { status } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const wsConnect = useWebSocket((s) => s.connect);
+  const wsDisconnect = useWebSocket((s) => s.disconnect);
+
+  useEffect(() => {
+    if (status === 'authenticated') {
+      wsConnect();
+    } else {
+      wsDisconnect();
+    }
+  }, [status, wsConnect, wsDisconnect]);
 
   useEffect(() => {
     if (status === 'idle' || status === 'loading') return;

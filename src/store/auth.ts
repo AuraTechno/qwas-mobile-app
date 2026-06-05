@@ -48,8 +48,9 @@ export const useAuth = create<AuthState>((set, get) => ({
   async login(username, password) {
     set({ status: 'loading', error: null });
     try {
-      const res = await authApi.login({ username, password });
-      set({ status: 'authenticated', user: res.user });
+      await authApi.login({ username, password });
+      const user = await authApi.me();
+      set({ status: 'authenticated', user, error: null });
     } catch (e: any) {
       set({ status: 'unauthenticated', error: e?.message || 'Login failed' });
       throw e;
@@ -59,8 +60,9 @@ export const useAuth = create<AuthState>((set, get) => ({
   async register(username, displayName, password) {
     set({ status: 'loading', error: null });
     try {
-      const res = await authApi.register({ username, displayName, password });
-      set({ status: 'authenticated', user: res.user });
+      await authApi.register({ username, displayName, password });
+      const user = await authApi.me();
+      set({ status: 'authenticated', user, error: null });
     } catch (e: any) {
       set({ status: 'unauthenticated', error: e?.message || 'Register failed' });
       throw e;

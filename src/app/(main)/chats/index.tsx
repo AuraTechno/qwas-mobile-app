@@ -28,8 +28,8 @@ export default function ChatsScreen() {
 
   const load = useCallback(async () => {
     try {
-      const data = await apiGet<Chat[]>('/api/v1/chats');
-      setChats(data);
+      const data = await apiGet<{ chats: Chat[] }>('/api/v1/chats');
+      setChats(data.chats || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -46,24 +46,25 @@ export default function ChatsScreen() {
     if (!query.trim()) return true;
     const q = query.toLowerCase();
     if (c.name && c.name.toLowerCase().includes(q)) return true;
-    if (c.members.some((m) => m.username.toLowerCase().includes(q))) return true;
-    if (c.lastMessage?.content.toLowerCase().includes(q)) return true;
+    if (c.members?.some((m) => m.username?.toLowerCase().includes(q))) return true;
+    if (c.lastMessage?.content?.toLowerCase().includes(q)) return true;
     return false;
   });
 
   function chatTitle(chat: Chat) {
     if (chat.name) return chat.name;
-    const other = chat.members[0];
+    const other = chat.members?.[0];
     return other?.displayName || other?.username || 'Чат';
   }
 
   function chatSubtitle(chat: Chat) {
-    if (chat.lastMessage) {
-      return chat.lastMessage.content.length > 50
-        ? chat.lastMessage.content.slice(0, 50) + '…'
-        : chat.lastMessage.content;
+    const m = chat.lastMessage;
+    if (m) {
+      const txt = m.content || (m.type === 'image' ? '🖼 Фото' : m.type === 'video' ? '🎥 Видео' : m.type === 'voice' ? '🎤 Голосовое' : m.type === 'file' ? '📎 Файл' : '');
+      if (!txt) return 'Нет сообщений';
+      return txt.length > 50 ? txt.slice(0, 50) + '…' : txt;
     }
-    return chat.type === 'group' ? `${chat.members.length} участников` : 'Нет сообщений';
+    return chat.type === 'group' ? `${chat.members?.length || 0} участников` : 'Нет сообщений';
   }
 
   return (

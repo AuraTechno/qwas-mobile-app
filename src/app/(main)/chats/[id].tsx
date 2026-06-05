@@ -26,6 +26,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { Spacing, Radius } from '@/constants/theme';
 import { apiGet, apiPost, apiUpload, mediaUrl } from '@/api/client';
 import { useAuth } from '@/store/auth';
+import { useWebSocket } from '@/store/websocket';
 import type { Chat, Message, ChatMember } from '@/types';
 
 export default function ChatScreen() {
@@ -48,8 +49,8 @@ export default function ChatScreen() {
 
   const loadChat = useCallback(async () => {
     try {
-      const data = await apiGet<Chat>(`/api/v1/chats/${chatId}`);
-      setChat(data);
+      const data = await apiGet<{ chat: Chat }>(`/api/v1/chats/${chatId}`);
+      setChat(data.chat);
     } catch (e) {
       console.error(e);
     }
@@ -66,13 +67,14 @@ export default function ChatScreen() {
           setLoadingMore(true);
         }
         const limit = 50;
-        const data = await apiGet<Message[]>(`/api/v1/chats/${chatId}/messages?limit=${limit}&offset=${reset ? 0 : page * limit}`);
+        const data = await apiGet<{ messages: Message[] }>(`/api/v1/chats/${chatId}/messages?limit=${limit}&offset=${reset ? 0 : page * limit}`);
+        const msgs = data.messages || [];
         if (reset) {
-          setMessages(data);
+          setMessages(msgs);
         } else {
-          setMessages((prev) => [...data, ...prev]);
+          setMessages((prev) => [...msgs, ...prev]);
         }
-        setHasMore(data.length === limit);
+        setHasMore(msgs.length === limit);
         setPage((p) => (reset ? 1 : p + 1));
       } catch (e) {
         console.error(e);
@@ -90,6 +92,18 @@ export default function ChatScreen() {
   }, [chatId]);
 
   useEffect(() => {
+    const off = useWebSocket.getState().on('new_message', (payload) => {
+      if (payload?.chatId !== chatId) return;
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === payload.id)) return prev;
+        return [...prev, payload as Message];
+      });
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
+    });
+    return off;
+  }, [chatId]);
+
+  useEffect(() => {
     if (messages.length > 0 && page === 1) {
       setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 100);
     }
@@ -97,10 +111,10 @@ export default function ChatScreen() {
 
   const chatTitle =
     chat?.name ||
-    (chat?.members.find((m) => m.userId !== me?.id)?.displayName) ||
+    (chat?.members?.find((m) => m.userId !== me?.id)?.displayName) ||
     'Чат';
 
-  const otherMember: ChatMember | undefined = chat?.members.find((m) => m.userId !== me?.id);
+  const otherMember: ChatMember | undefined = chat?.members?.find((m) => m.userId !== me?.id);
 
   async function send() {
     if (!input.trim() || sending) return;
