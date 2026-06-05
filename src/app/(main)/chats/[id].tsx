@@ -3,6 +3,7 @@
  */
 
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { Alert, Clipboard } from 'react-native';
 import {
   View,
   FlatList,
@@ -13,7 +14,7 @@ import {
   Pressable,
   ActivityIndicator,
 } from 'react-native';
-import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { useLocalSearchParams, useRouter, useNavigation, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
@@ -22,9 +23,10 @@ import * as DocumentPicker from 'expo-document-picker';
 import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
 import { Icon } from '@/components/icon';
+import MessageContextMenu, { type MessageAction } from '@/components/message-context-menu';
 import { useTheme } from '@/hooks/use-theme';
-import { Spacing, Radius } from '@/constants/theme';
-import { apiGet, apiPost, apiUpload, mediaUrl } from '@/api/client';
+import { Spacing } from '@/constants/theme';
+import { apiGet, apiPost, apiPatch, apiDelete, apiUpload, mediaUrl } from '@/api/client';
 import { useAuth } from '@/store/auth';
 import { useWebSocket } from '@/store/websocket';
 import type { Chat, Message, ChatMember } from '@/types';
@@ -33,6 +35,7 @@ export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const chatId = Number(id);
   const router = useRouter();
+  const navigation = useNavigation();
   const theme = useTheme();
   const me = useAuth((s) => s.user);
 
@@ -44,6 +47,10 @@ export default function ChatScreen() {
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+
+  const [actionMessage, setActionMessage] = useState<Message | null>(null);
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
   const listRef = useRef<FlatList<Message>>(null);
 
@@ -92,7 +99,30 @@ export default function ChatScreen() {
   }, [chatId]);
 
   useEffect(() => {
-    const off = useWebSocket.getState().on('new_message', (payload) => {
+    const parent = navigation.getParent();
+    if (!parent) return;
+    parent.setOptions({ tabBarStyle: { display: 'none' } });
+    return () => {
+      parent.setOptions({
+        tabBarStyle: {
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: Platform.OS === 'ios' ? 88 : 72,
+          paddingTop: 8,
+          paddingBottom: Platform.OS === 'ios' ? 28 : 12,
+          borderTopWidth: 0.5,
+          borderTopColor: theme.hairline,
+          backgroundColor: 'transparent',
+          elevation: 0,
+        },
+      });
+    };
+  }, [navigation, theme.hairline]);
+
+  useEffect(() => {
+    const offNew = useWebSocket.getState().on('new_message', (payload) => {
       if (payload?.chatId !== chatId) return;
       setMessages((prev) => {
         if (prev.some((m) => m.id === payload.id)) return prev;
@@ -100,7 +130,35 @@ export default function ChatScreen() {
       });
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
     });
-    return off;
+    const offEdit = useWebSocket.getState().on('message_edited', (payload) => {
+      if (payload?.chatId !== chatId) return;
+      setMessages((prev) => prev.map((m) =>
+        m.id === payload.id ? { ...m, content: payload.content, editedAt: payload.editedAt } : m
+      ));
+    });
+    const offDel = useWebSocket.getState().on('message_deleted', (payload) => {
+      if (payload?.chatId !== chatId) return;
+      setMessages((prev) => prev.filter((m) => m.id !== payload.id));
+    });
+    const offReact = useWebSocket.getState().on('message_reaction', (payload) => {
+      if (payload?.chatId !== chatId) return;
+      setMessages((prev) => prev.map((m) => {
+        if (m.id !== payload.id) return m;
+        const existing = m.reactions || [];
+        let next: typeof existing;
+        if (payload.active) {
+          if (existing.some((r) => r.userId === payload.userId && r.emoji === payload.emoji)) {
+            next = existing;
+          } else {
+            next = [...existing, { messageId: payload.id, userId: payload.userId, emoji: payload.emoji, createdAt: payload.createdAt }];
+          }
+        } else {
+          next = existing.filter((r) => !(r.userId === payload.userId && r.emoji === payload.emoji));
+        }
+        return { ...m, reactions: next };
+      }));
+    });
+    return () => { offNew(); offEdit(); offDel(); offReact(); };
   }, [chatId]);
 
   useEffect(() => {
@@ -117,15 +175,36 @@ export default function ChatScreen() {
   const otherMember: ChatMember | undefined = chat?.members?.find((m) => m.userId !== me?.id);
 
   async function send() {
-    if (!input.trim() || sending) return;
+    const text = input.trim();
+    if (!text || sending) return;
     setSending(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const text = input.trim();
     setInput('');
+
+    if (editingMessage) {
+      const msgId = editingMessage.id;
+      const original = editingMessage.content;
+      setEditingMessage(null);
+      try {
+        await apiPatch(`/api/v1/messages/${msgId}`, { content: text });
+        setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, content: text, editedAt: new Date().toISOString() } : m));
+      } catch (e) {
+        console.error(e);
+        Alert.alert('Ошибка', 'Не удалось отредактировать');
+        setInput(text);
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    const replyToId = replyingTo?.id ?? null;
+    setReplyingTo(null);
     try {
       const msg = await apiPost<Message>(`/api/v1/chats/${chatId}/messages`, {
         type: 'text',
         content: text,
+        replyToId,
       });
       setMessages((prev) => [...prev, msg]);
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
@@ -133,6 +212,65 @@ export default function ChatScreen() {
       console.error(e);
     } finally {
       setSending(false);
+    }
+  }
+
+  async function handleContextAction(action: MessageAction, emoji?: string) {
+    if (!actionMessage) return;
+    const msg = actionMessage;
+    setActionMessage(null);
+
+    switch (action) {
+      case 'reply':
+        setReplyingTo(msg);
+        setEditingMessage(null);
+        break;
+      case 'copy':
+        if (msg.content) {
+          Clipboard.setString(msg.content);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+        break;
+      case 'edit':
+        if (msg.type === 'text') {
+          setEditingMessage(msg);
+          setReplyingTo(null);
+          setInput(msg.content || '');
+        }
+        break;
+      case 'delete':
+        try {
+          await apiDelete(`/api/v1/messages/${msg.id}`);
+          setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+        } catch (e) {
+          console.error(e);
+          Alert.alert('Ошибка', 'Не удалось удалить');
+        }
+        break;
+      case 'pin':
+        try {
+          if (chat?.pinnedMessageId === msg.id) {
+            await apiDelete(`/api/v1/chats/${chatId}/pin-message`);
+            setChat((c) => c ? { ...c, pinnedMessageId: null } : c);
+          } else {
+            await apiPost(`/api/v1/chats/${chatId}/pin-message`, { messageId: msg.id });
+            setChat((c) => c ? { ...c, pinnedMessageId: msg.id } : c);
+          }
+        } catch (e) {
+          console.error(e);
+          Alert.alert('Ошибка', 'Не удалось закрепить');
+        }
+        break;
+      case 'react':
+        if (!emoji) return;
+        try {
+          await apiPost(`/api/v1/messages/${msg.id}/reactions`, { emoji });
+        } catch (e) {
+          try {
+            await apiDelete(`/api/v1/messages/${msg.id}/reactions?emoji=${encodeURIComponent(emoji)}`);
+          } catch {}
+        }
+        break;
     }
   }
 
@@ -175,6 +313,7 @@ export default function ChatScreen() {
     const isMe = item.senderId === me?.id;
     const prev = messages[index - 1];
     const showName = !isMe && chat?.type !== 'private' && (!prev || prev.senderId !== item.senderId);
+    const isPinned = chat?.pinnedMessageId === item.id;
 
     if (item.type === 'system') {
       return (
@@ -204,7 +343,14 @@ export default function ChatScreen() {
             </ThemedText>
           ) : null}
           <Pressable
-            onLongPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)}
+            onLongPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              setActionMessage(item);
+            }}
+            onPress={() => {
+              if (replyingTo?.id === item.id) setReplyingTo(null);
+            }}
+            delayLongPress={300}
             style={[
               styles.bubble,
               isMe
@@ -212,6 +358,28 @@ export default function ChatScreen() {
                 : { backgroundColor: theme.received, borderBottomLeftRadius: 4 },
             ]}
           >
+            {isPinned && (
+              <View style={styles.pinIndicator}>
+                <Icon name="Pin" size={10} color={isMe ? theme.sentText : theme.accent} />
+                <ThemedText variant="caption2" style={{ color: isMe ? theme.sentText : theme.accent, marginLeft: 4 }}>
+                  Закреплено
+                </ThemedText>
+              </View>
+            )}
+            {item.replyTo && (
+              <View style={[styles.replyQuote, { borderLeftColor: isMe ? 'rgba(255,255,255,0.6)' : theme.accent }]}>
+                <ThemedText variant="caption1" style={{ color: isMe ? theme.sentText : theme.accent, fontWeight: '600' }}>
+                  {item.replyTo.sender?.displayName || item.replyTo.sender?.username || `User ${item.replyTo.senderId}`}
+                </ThemedText>
+                <ThemedText
+                  variant="caption1"
+                  numberOfLines={1}
+                  style={{ color: isMe ? 'rgba(255,255,255,0.85)' : theme.textSecondary }}
+                >
+                  {item.replyTo.content || (item.replyTo.type !== 'text' ? `📎 ${item.replyTo.type}` : '')}
+                </ThemedText>
+              </View>
+            )}
             {item.mediaUrl ? (
               item.type === 'image' ? (
                 <View>
@@ -237,9 +405,29 @@ export default function ChatScreen() {
               style={{ color: isMe ? 'rgba(255,255,255,0.7)' : theme.textTertiary, marginTop: 2 }}
             >
               {formatTime(item.createdAt)}
+              {item.editedAt ? ' · изм.' : ''}
               {isMe ? (item.id ? ' ✓✓' : ' ✓') : ''}
             </ThemedText>
           </Pressable>
+          {item.reactions && item.reactions.length > 0 && (
+            <View style={[styles.reactions, isMe ? styles.reactionsMe : styles.reactionsThem]}>
+              {Object.entries(
+                item.reactions.reduce<Record<string, number>>((acc, r) => {
+                  acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+                  return acc;
+                }, {})
+              ).map(([emoji, count]) => (
+                <View key={emoji} style={[styles.reactionChip, { backgroundColor: theme.bgSecondary }]}>
+                  <ThemedText variant="caption2">{emoji}</ThemedText>
+                  {count > 1 && (
+                    <ThemedText variant="caption2" style={{ color: theme.textSecondary, marginLeft: 2 }}>
+                      {count}
+                    </ThemedText>
+                  )}
+                </View>
+              ))}
+            </View>
+          )}
         </View>
       </View>
     );
@@ -298,6 +486,36 @@ export default function ChatScreen() {
             }
           />
 
+          {(replyingTo || editingMessage) && (
+            <View style={[styles.replyEditBar, { backgroundColor: theme.bgSecondary, borderTopColor: theme.hairline }]}>
+              {editingMessage ? (
+                <View style={{ flex: 1 }}>
+                  <ThemedText variant="caption1" style={{ color: theme.accent, fontWeight: '600' }}>
+                    Редактирование
+                  </ThemedText>
+                  <ThemedText variant="caption1" numberOfLines={1} color="secondary">
+                    {editingMessage.content}
+                  </ThemedText>
+                </View>
+              ) : replyingTo ? (
+                <View style={{ flex: 1 }}>
+                  <ThemedText variant="caption1" style={{ color: theme.accent, fontWeight: '600' }}>
+                    Ответ {replyingTo.sender?.displayName || replyingTo.sender?.username || ''}
+                  </ThemedText>
+                  <ThemedText variant="caption1" numberOfLines={1} color="secondary">
+                    {replyingTo.content || (replyingTo.type !== 'text' ? `📎 ${replyingTo.type}` : '')}
+                  </ThemedText>
+                </View>
+              ) : null}
+              <Pressable
+                onPress={() => { setReplyingTo(null); setEditingMessage(null); setInput(''); }}
+                style={styles.cancelBtn}
+              >
+                <Icon name="X" size={18} color={theme.textSecondary} />
+              </Pressable>
+            </View>
+          )}
+
           <View style={[styles.composer, { backgroundColor: theme.bg, borderTopColor: theme.hairline }]}>
             <Pressable onPress={pickImage} style={styles.attachBtn}>
               <Icon name="ImagePlus" size={22} color={theme.accent} />
@@ -329,6 +547,14 @@ export default function ChatScreen() {
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
+      <MessageContextMenu
+        visible={!!actionMessage}
+        message={actionMessage}
+        isMe={actionMessage?.senderId === me?.id}
+        isPinned={actionMessage ? chat?.pinnedMessageId === actionMessage.id : false}
+        onClose={() => setActionMessage(null)}
+        onAction={handleContextAction}
+      />
     </>
   );
 }
@@ -388,5 +614,46 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  pinIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  replyQuote: {
+    borderLeftWidth: 2,
+    paddingLeft: 8,
+    paddingVertical: 2,
+    marginBottom: 4,
+  },
+  reactions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 4,
+    gap: 4,
+  },
+  reactionsMe: { justifyContent: 'flex-end' },
+  reactionsThem: { justifyContent: 'flex-start' },
+  reactionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  replyEditBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderTopWidth: 0.5,
+    gap: Spacing.two,
+  },
+  cancelBtn: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
   },
 });
