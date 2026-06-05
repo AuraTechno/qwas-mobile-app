@@ -14,6 +14,7 @@ import { useAuth } from '@/store/auth';
 import { useSettings, type ThemeMode } from '@/store/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { Spacing, Radius } from '@/constants/theme';
+import Constants from 'expo-constants';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -139,7 +140,9 @@ export default function SettingsScreen() {
 
         <View style={styles.section}>
           <Row icon="HelpCircle" title="Помощь" theme={theme} onPress={() => {}} />
-          <Row icon="Info" title="О приложении" value="v1.0.0" theme={theme} onPress={() => {}} />
+          <Row icon="Info" title="О приложении" value={`v${Constants.expoConfig?.version ?? '1.0.0'}`} theme={theme} onPress={() => {
+            Alert.alert('QWAS Messenger', `Версия: ${Constants.expoConfig?.version ?? '1.0.0'}\nExpo SDK: ${Constants.expoConfig?.sdkVersion ?? '55'}\nСборка: ${Constants.expoConfig?.ios?.buildNumber ?? Constants.expoConfig?.android?.versionCode ?? '1'}\n\nСервер: api-qwas.academinctools.pw`);
+          }} />
         </View>
 
         <View style={[styles.section, { marginTop: Spacing.six }]}>
