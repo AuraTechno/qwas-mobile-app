@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react';
-import { View, FlatList, StyleSheet, RefreshControl, Pressable, ActivityIndicator, TextInput } from 'react-native';
+import { View, FlatList, StyleSheet, RefreshControl, Pressable, ActivityIndicator, TextInput, Alert } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
@@ -93,6 +93,27 @@ export default function ChatsScreen() {
             returnKeyType="search"
           />
         </View>
+
+        <Pressable
+          onPress={async () => {
+            try {
+              const data = await apiGet<{ chat: { id: number } }>('/api/v1/chats/self');
+              router.push({ pathname: '/(main)/chats/[id]', params: { id: String(data.chat.id) } });
+            } catch (e) {
+              Alert.alert('Ошибка', 'Не удалось открыть Избранное');
+            }
+          }}
+          style={({ pressed }) => [styles.savedRow, { borderBottomColor: theme.separator, opacity: pressed ? 0.6 : 1 }]}
+        >
+          <View style={[styles.savedIcon, { backgroundColor: theme.accent }]}>
+            <Icon name="Bookmark" size={20} color="#fff" />
+          </View>
+          <View style={{ flex: 1, marginLeft: Spacing.three }}>
+            <ThemedText variant="headline">Избранное</ThemedText>
+            <ThemedText variant="caption1" color="tertiary">Личные заметки и медиа</ThemedText>
+          </View>
+          <Icon name="ChevronRight" size={18} color={theme.textTertiary} />
+        </Pressable>
 
         {loading ? (
           <View style={styles.center}>
@@ -224,6 +245,13 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     paddingVertical: 0,
+  },
+  savedRow: {
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.three, borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  savedIcon: {
+    width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
   },
   center: {
     flex: 1,

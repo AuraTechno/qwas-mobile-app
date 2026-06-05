@@ -22,7 +22,7 @@ export type AuthResponse = {
 
 export type Chat = {
   id: number;
-  type: 'private' | 'group' | 'channel';
+  type: 'private' | 'group' | 'channel' | 'self';
   name: string | null;
   description?: string | null;
   avatarUrl?: string | null;

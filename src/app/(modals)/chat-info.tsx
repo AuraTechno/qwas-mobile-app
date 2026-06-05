@@ -182,7 +182,7 @@ export default function ChatInfoScreen() {
                   destructive
                   onPress={clearHistory}
                 />
-                {chat.type !== 'private' && (
+                {chat.type !== 'private' && chat.type !== 'self' && (
                   <SettingRow
                     icon="LogOut"
                     label={chat.type === 'channel' ? 'Отписаться' : 'Покинуть чат'}
