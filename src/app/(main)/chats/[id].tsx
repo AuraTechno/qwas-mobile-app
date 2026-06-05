@@ -515,12 +515,23 @@ export default function ChatScreen() {
       );
     }
 
+    const showDateHeader = !prev || !isSameDay(prev.createdAt, item.createdAt);
+    const dateLabel = formatDateLabel(item.createdAt);
+
     return (
       <Animated.View
         entering={FadeInUp.duration(180)}
         layout={LinearTransition.springify()}
-        style={[styles.bubbleRow, isMe && styles.bubbleRowMe]}
+        style={{ marginBottom: 4 }}
       >
+      {showDateHeader && (
+        <View style={styles.dateHeader}>
+          <View style={[styles.datePill, { backgroundColor: theme.bgSecondary }]}>
+            <ThemedText variant="caption1" color="secondary" style={{ fontWeight: '600' }}>{dateLabel}</ThemedText>
+          </View>
+        </View>
+      )}
+      <View style={[styles.bubbleRow, isMe && styles.bubbleRowMe]}>
         {!isMe && chat?.type !== 'private' ? (
           <View style={styles.bubbleAvatar}>
             {showName ? (
@@ -731,6 +742,7 @@ export default function ChatScreen() {
             </Animated.View>
           )}
         </View>
+      </View>
       </Animated.View>
     );
   }
@@ -1035,6 +1047,20 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+function isSameDay(a: string, b: string) {
+  const da = new Date(a), db = new Date(b);
+  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
+}
+
+function formatDateLabel(iso: string) {
+  const d = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date(); yesterday.setDate(today.getDate() - 1);
+  if (isSameDay(d.toISOString(), today.toISOString())) return 'Сегодня';
+  if (isSameDay(d.toISOString(), yesterday.toISOString())) return 'Вчера';
+  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: d.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
+}
+
 function parseMeta(s: string | null | undefined): Record<string, any> {
   if (!s) return {};
   try { return JSON.parse(s) || {}; } catch { return {}; }
@@ -1045,6 +1071,8 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { alignItems: 'center' },
   systemRow: { paddingVertical: Spacing.three, alignItems: 'center' },
+  dateHeader: { alignItems: 'center', paddingVertical: Spacing.three },
+  datePill: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
   bubbleRow: {
     flexDirection: 'row',
     paddingHorizontal: Spacing.four,
