@@ -90,7 +90,7 @@ export default function NewChatModal() {
           ) : query.trim().length < 2 ? (
             <ScrollView contentContainerStyle={styles.center}>
               <Pressable
-                onPress={() => router.replace('/(modals)/new-group')}
+                onPress={() => router.replace({ pathname: '/(modals)/new-group', params: { mode: 'group' } })}
                 style={({ pressed }) => [styles.quickAction, { backgroundColor: theme.bgSecondary, opacity: pressed ? 0.6 : 1 }]}
               >
                 <Icon name="Users" size={22} color={theme.accent} />
@@ -99,7 +99,7 @@ export default function NewChatModal() {
                 </ThemedText>
               </Pressable>
               <Pressable
-                onPress={() => router.replace('/(modals)/new-group')}
+                onPress={() => router.replace({ pathname: '/(modals)/new-group', params: { mode: 'channel' } })}
                 style={({ pressed }) => [styles.quickAction, { backgroundColor: theme.bgSecondary, opacity: pressed ? 0.6 : 1 }]}
               >
                 <Icon name="Megaphone" size={22} color={theme.accent} />

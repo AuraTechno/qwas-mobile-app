@@ -7,7 +7,7 @@ import {
   View, TextInput, FlatList, StyleSheet, Pressable, ActivityIndicator,
   KeyboardAvoidingView, Platform, Alert, ScrollView,
 } from 'react-native';
-import { useRouter, Stack } from 'expo-router';
+import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
@@ -23,8 +23,9 @@ type Mode = 'group' | 'channel';
 export default function NewGroupChannel() {
   const router = useRouter();
   const theme = useTheme();
+  const params = useLocalSearchParams<{ mode?: string }>();
 
-  const [mode, setMode] = useState<Mode>('group');
+  const [mode, setMode] = useState<Mode>(params.mode === 'channel' ? 'channel' : 'group');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [query, setQuery] = useState('');
