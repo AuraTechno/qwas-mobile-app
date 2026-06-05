@@ -30,6 +30,7 @@ import { apiGet, apiPost, apiPatch, apiDelete, apiUpload, mediaUrl } from '@/api
 import { useAuth } from '@/store/auth';
 import { useWebSocket } from '@/store/websocket';
 import type { Chat, Message, ChatMember } from '@/types';
+import { Image as RNImage } from 'react-native';
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -383,13 +384,22 @@ export default function ChatScreen() {
             {item.mediaUrl ? (
               item.type === 'image' ? (
                 <View>
-                  <ThemedText variant="body" style={{ color: isMe ? theme.sentText : theme.receivedText }}>
-                    {item.content}
-                  </ThemedText>
+                  {mediaUrl(item.mediaUrl) ? (
+                    <RNImage
+                      source={{ uri: mediaUrl(item.mediaUrl)! }}
+                      style={{ width: 220, height: 220, borderRadius: 12, marginBottom: 4 }}
+                      resizeMode="cover"
+                    />
+                  ) : null}
+                  {item.content && item.content !== '🖼' ? (
+                    <ThemedText variant="body" style={{ color: isMe ? theme.sentText : theme.receivedText }}>
+                      {item.content}
+                    </ThemedText>
+                  ) : null}
                 </View>
               ) : (
                 <ThemedText variant="body" style={{ color: isMe ? theme.sentText : theme.receivedText }}>
-                  {item.content} {item.mediaUrl}
+                  {item.content || '📎 Файл'} {item.mediaUrl ? '↗' : ''}
                 </ThemedText>
               )
             ) : (
@@ -470,6 +480,33 @@ export default function ChatScreen() {
           keyboardVerticalOffset={0}
           style={{ flex: 1 }}
         >
+          {chat.pinnedMessageId && (
+            <View style={[styles.pinnedBanner, { backgroundColor: theme.bgSecondary, borderBottomColor: theme.hairline }]}>
+              <Icon name="Pin" size={14} color={theme.accent} />
+              <View style={{ flex: 1, marginLeft: Spacing.two }}>
+                <ThemedText variant="caption1" style={{ color: theme.accent, fontWeight: '600' }}>
+                  Закреплённое сообщение
+                </ThemedText>
+                <ThemedText variant="footnote" numberOfLines={1} color="secondary">
+                  {(() => {
+                    const m = messages.find((mm) => mm.id === chat.pinnedMessageId);
+                    if (!m) return 'Загружается...';
+                    const sender = m.sender?.displayName || m.sender?.username || '';
+                    return `${sender}: ${m.content || (m.type !== 'text' ? `📎 ${m.type}` : '')}`;
+                  })()}
+                </ThemedText>
+              </View>
+              <Pressable
+                onPress={() => {
+                  const idx = messages.findIndex((m) => m.id === chat.pinnedMessageId);
+                  if (idx >= 0) listRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
+                }}
+                style={styles.pinJump}
+              >
+                <Icon name="ChevronRight" size={16} color={theme.accent} />
+              </Pressable>
+            </View>
+          )}
           <FlatList
             ref={listRef}
             data={messages}
@@ -655,5 +692,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 14,
+  },
+  pinnedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderBottomWidth: 0.5,
+  },
+  pinJump: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
