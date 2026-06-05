@@ -19,7 +19,22 @@ export default function SettingsScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { user, logout } = useAuth();
-  const { theme: themeMode, pushEnabled, soundEnabled, vibrateEnabled, setTheme, setPush, setSound, setVibrate } = useSettings();
+  const { theme: themeMode, accentColor, pushEnabled, soundEnabled, vibrateEnabled, setTheme, setAccent, setPush, setSound, setVibrate } = useSettings();
+
+  const ACCENT_OPTIONS = [
+    { name: 'Синий', value: '#007AFF' },
+    { name: 'Голубой', value: '#5AC8FA' },
+    { name: 'Красный', value: '#FF3B30' },
+    { name: 'Оранжевый', value: '#FF9500' },
+    { name: 'Жёлтый', value: '#FFCC00' },
+    { name: 'Зелёный', value: '#34C759' },
+    { name: 'Бирюзовый', value: '#30B0C7' },
+    { name: 'Индиго', value: '#5856D6' },
+    { name: 'Розовый', value: '#FF2D55' },
+    { name: 'Фиолетовый', value: '#AF52DE' },
+    { name: 'Коричневый', value: '#A2845E' },
+    { name: 'Серый', value: '#8E8E93' },
+  ];
 
   function pickTheme() {
     Alert.alert('Тема оформления', undefined, [
@@ -77,7 +92,7 @@ export default function SettingsScreen() {
             АККАУНТ
           </ThemedText>
           <Row icon="KeyRound" title="Безопасность" theme={theme} onPress={() => Alert.alert('Скоро')} />
-          <Row icon="Smartphone" title="Активные устройства" theme={theme} onPress={() => Alert.alert('Скоро')} />
+          <Row icon="Smartphone" title="Активные устройства" theme={theme} onPress={() => router.push('/(modals)/sessions')} />
         </View>
 
         <View style={styles.section}>
@@ -85,6 +100,26 @@ export default function SettingsScreen() {
             ВНЕШНИЙ ВИД
           </ThemedText>
           <Row icon="Palette" title="Тема оформления" value={themeMode === 'auto' ? 'Авто' : themeMode === 'light' ? 'Светлая' : 'Тёмная'} theme={theme} onPress={pickTheme} />
+          <View style={{ paddingHorizontal: Spacing.four, paddingTop: Spacing.two }}>
+            <ThemedText variant="footnote" color="secondary" style={{ paddingBottom: Spacing.two, textTransform: 'uppercase' }}>
+              ЦВЕТ АКЦЕНТА
+            </ThemedText>
+            <View style={styles.colorRow}>
+              {ACCENT_OPTIONS.map((c) => {
+                const selected = accentColor === c.value || (!accentColor && c.value === '#007AFF');
+                return (
+                  <Pressable
+                    key={c.value}
+                    onPress={() => setAccent(c.value === '#007AFF' && accentColor === '#007AFF' ? null : c.value)}
+                    style={[
+                      styles.colorCircle,
+                      { backgroundColor: c.value, borderWidth: selected ? 3 : 0, borderColor: theme.text },
+                    ]}
+                  />
+                );
+              })}
+            </View>
+          </View>
         </View>
 
         <View style={styles.section}>
@@ -202,4 +237,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: Radius.md,
   },
+  colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingVertical: 4 },
+  colorCircle: { width: 36, height: 36, borderRadius: 18 },
 });
