@@ -125,6 +125,15 @@ export default function SettingsScreen() {
 
         <View style={styles.section}>
           <ThemedText variant="footnote" color="secondary" style={styles.sectionHeader}>
+            КОНФИДЕНЦИАЛЬНОСТЬ
+          </ThemedText>
+          <Row icon="Eye" title="Кто видит время захода" value="Все" theme={theme} onPress={() => Alert.alert('Скоро', 'Настройка приватности в разработке')} />
+          <Row icon="Phone" title="Кто может звонить мне" value="Все" theme={theme} onPress={() => Alert.alert('Скоро', 'Настройка приватности в разработке')} />
+          <Row icon="UserPlus" title="Кто может добавлять в группы" value="Все" theme={theme} onPress={() => Alert.alert('Скоро', 'Настройка приватности в разработке')} />
+        </View>
+
+        <View style={styles.section}>
+          <ThemedText variant="footnote" color="secondary" style={styles.sectionHeader}>
             УВЕДОМЛЕНИЯ
           </ThemedText>
           <Row icon="Bell" title="Push-уведомления" theme={theme} right={
