@@ -1,0 +1,48 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote",
+    "requireCommit": true
+  },
+  "build": {
+    "base": {
+      "node": "22.11.0",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://api-qwas.academinctools.pw"
+      }
+    },
+    "development": {
+      "extends": "base",
+      "developmentClient": true,
+      "distribution": "internal",
+      "channel": "development",
+      "ios": {
+        "simulator": true,
+        "bundleIdentifier": "com.auratechno.qwas.dev"
+      },
+      "android": {
+        "gradleCommand": ":app:assembleDebug",
+        "buildType": "apk",
+        "packageName": "com.auratechno.qwas.dev"
+      }
+    },
+    "preview": {
+      "extends": "base",
+      "distribution": "internal",
+      "channel": "preview",
+      "android": {
+        "gradleCommand": ":app:assembleRelease",
+        "buildType": "apk",
+        "packageName": "com.auratechno.qwas"
+      }
+    },
+    "production": {
+      "extends": "base",
+      "autoIncrement": true,
+      "channel": "production"
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
