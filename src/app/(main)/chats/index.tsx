@@ -136,6 +136,7 @@ export default function ChatsScreen() {
                     username={title.toLowerCase()}
                     displayName={title}
                     size={52}
+                    isOnline={item.members?.find((m) => m.userId !== m.userId)?.isOnline ?? item.members?.[0]?.isOnline}
                   />
                   <View style={styles.rowContent}>
                     <View style={styles.rowTop}>

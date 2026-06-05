@@ -49,9 +49,12 @@ export default function ChatScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  const lastTypingSentRef = useRef(0);
+
   const [actionMessage, setActionMessage] = useState<Message | null>(null);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [typingUsers, setTypingUsers] = useState<Set<number>>(new Set());
 
   const listRef = useRef<FlatList<Message>>(null);
 
@@ -159,7 +162,25 @@ export default function ChatScreen() {
         return { ...m, reactions: next };
       }));
     });
-    return () => { offNew(); offEdit(); offDel(); offReact(); };
+    const offTyping = useWebSocket.getState().on('user_typing', (payload) => {
+      if (payload?.chatId !== chatId) return;
+      setTypingUsers((prev) => {
+        const next = new Set(prev);
+        if (payload.isTyping) next.add(payload.userId);
+        else next.delete(payload.userId);
+        return next;
+      });
+      if (payload.isTyping) {
+        setTimeout(() => {
+          setTypingUsers((prev) => {
+            const next = new Set(prev);
+            next.delete(payload.userId);
+            return next;
+          });
+        }, 5000);
+      }
+    });
+    return () => { offNew(); offEdit(); offDel(); offReact(); offTyping(); };
   }, [chatId]);
 
   useEffect(() => {
@@ -463,7 +484,9 @@ export default function ChatScreen() {
                 <ThemedText variant="headline" numberOfLines={1}>
                   {chatTitle}
                 </ThemedText>
-                {otherMember?.isOnline ? (
+                {typingUsers.size > 0 ? (
+                  <ThemedText variant="caption1" color="accent">печатает...</ThemedText>
+                ) : otherMember?.isOnline ? (
                   <ThemedText variant="caption1" color="success">в сети</ThemedText>
                 ) : null}
               </View>
@@ -563,7 +586,14 @@ export default function ChatScreen() {
             <View style={[styles.composerInput, { backgroundColor: theme.bgSecondary }]}>
               <TextInput
                 value={input}
-                onChangeText={setInput}
+                onChangeText={(v) => {
+                  setInput(v);
+                  const now = Date.now();
+                  if (now - lastTypingSentRef.current > 2000 && v.length > 0) {
+                    lastTypingSentRef.current = now;
+                    useWebSocket.getState().send('typing', { chatId, isTyping: true });
+                  }
+                }}
                 placeholder="Сообщение"
                 placeholderTextColor={theme.textPlaceholder}
                 multiline
