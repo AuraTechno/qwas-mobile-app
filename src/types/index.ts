@@ -57,10 +57,10 @@ export type Message = {
   chatId: number;
   senderId: number;
   sender?: User;
-  type: 'text' | 'image' | 'video' | 'voice' | 'file' | 'system';
+  type: 'text' | 'image' | 'video' | 'voice' | 'file' | 'system' | 'location' | 'contact';
   content: string;
   mediaUrl?: string | null;
-  mediaMeta?: Record<string, any> | null;
+  mediaMeta?: string | null;
   replyToId?: number | null;
   replyTo?: Message | null;
   forwardedFromId?: number | null;

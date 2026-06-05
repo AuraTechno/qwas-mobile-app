@@ -16,21 +16,31 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter, useNavigation, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useHeaderHeight } from '@react-navigation/elements';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import * as DocumentPicker from 'expo-document-picker';
+import * as Location from 'expo-location';
+import * as Contacts from 'expo-contacts';
+import { Audio } from 'expo-av';
+import Animated, { FadeIn, FadeInUp, FadeInDown, LinearTransition, useSharedValue, withSpring, useAnimatedStyle } from 'react-native-reanimated';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
 import { Icon } from '@/components/icon';
 import MessageContextMenu, { type MessageAction } from '@/components/message-context-menu';
+import AttachSheet, { type AttachAction } from '@/components/attach-sheet';
+import VoiceRecorder from '@/components/voice-recorder';
+import VoicePlayer from '@/components/voice-player';
 import { useTheme } from '@/hooks/use-theme';
 import { Spacing } from '@/constants/theme';
 import { apiGet, apiPost, apiPatch, apiDelete, apiUpload, mediaUrl } from '@/api/client';
 import { useAuth } from '@/store/auth';
 import { useWebSocket } from '@/store/websocket';
 import type { Chat, Message, ChatMember } from '@/types';
-import { Image as RNImage } from 'react-native';
+import { Image as RNImage, ImageBackground } from 'react-native';
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -56,6 +66,9 @@ export default function ChatScreen() {
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [typingUsers, setTypingUsers] = useState<Set<number>>(new Set());
   const [showScrollDown, setShowScrollDown] = useState(false);
+  const [showAttachSheet, setShowAttachSheet] = useState(false);
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
+  const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
 
   const listRef = useRef<FlatList<Message>>(null);
 
@@ -102,6 +115,8 @@ export default function ChatScreen() {
     loadChat();
     loadMessages(true);
   }, [chatId]);
+
+  const headerHeight = useHeaderHeight();
 
   useEffect(() => {
     const parent = navigation.getParent();
@@ -300,6 +315,19 @@ export default function ChatScreen() {
           } catch {}
         }
         break;
+      case 'forward':
+        setForwardingMessage(msg);
+        router.push({
+          pathname: '/(modals)/forward',
+          params: {
+            id: String(msg.id),
+            type: msg.type,
+            content: msg.content || '',
+            mediaUrl: msg.mediaUrl || '',
+            mediaMeta: msg.mediaMeta || '',
+          },
+        });
+        break;
     }
   }
 
@@ -312,13 +340,132 @@ export default function ChatScreen() {
     await uploadFile(res.assets[0].uri, res.assets[0].mimeType ?? 'image/jpeg', 'image');
   }
 
+  async function pickVideo() {
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      quality: 0.8,
+    });
+    if (res.canceled || !res.assets[0]) return;
+    await uploadFile(res.assets[0].uri, res.assets[0].mimeType ?? 'video/mp4', 'video', res.assets[0].fileName ?? undefined);
+  }
+
+  async function takePhoto() {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Нужен доступ', 'Разрешите доступ к камере в настройках');
+      return;
+    }
+    const res = await ImagePicker.launchCameraAsync({ quality: 0.8 });
+    if (res.canceled || !res.assets[0]) return;
+    await uploadFile(res.assets[0].uri, res.assets[0].mimeType ?? 'image/jpeg', 'image');
+  }
+
   async function pickDocument() {
     const res = await DocumentPicker.getDocumentAsync({});
     if (res.canceled || !res.assets[0]) return;
     await uploadFile(res.assets[0].uri, res.assets[0].mimeType ?? 'application/octet-stream', 'file', res.assets[0].name);
   }
 
-  async function uploadFile(uri: string, mimeType: string, type: 'image' | 'file', filename?: string) {
+  async function sendLocation() {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Нужен доступ', 'Разрешите доступ к геолокации');
+        return;
+      }
+      const loc = await Location.getCurrentPositionAsync({});
+      const meta = JSON.stringify({ lat: loc.coords.latitude, lon: loc.coords.longitude, accuracy: loc.coords.accuracy });
+      const msg = await apiPost<Message>(`/api/v1/chats/${chatId}/messages`, {
+        type: 'location',
+        content: meta,
+        mediaMeta: meta,
+      });
+      setMessages((prev) => [...prev, msg]);
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Ошибка', 'Не удалось получить местоположение');
+    }
+  }
+
+  async function sendContact() {
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Нужен доступ', 'Разрешите доступ к контактам');
+        return;
+      }
+      const { data } = await Contacts.getContactsAsync({ fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers] });
+      if (data.length === 0) {
+        Alert.alert('Нет контактов', 'Контактная книга пуста');
+        return;
+      }
+      const top = data.slice(0, 10).filter((c: any) => c.phoneNumbers && c.phoneNumbers[0]);
+      if (top.length === 0) {
+        Alert.alert('Нет контактов', 'Нет контактов с номерами телефона');
+        return;
+      }
+      Alert.alert(
+        'Выберите контакт',
+        undefined,
+        [
+          ...top.map((c: any) => ({
+            text: `${c.name} (${c.phoneNumbers[0].number})`,
+            onPress: () => sendContactMessage(c),
+          })),
+          { text: 'Отмена', style: 'cancel' },
+        ],
+      );
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function sendContactMessage(contact: any) {
+    try {
+      const phone = contact.phoneNumbers?.[0]?.number || '';
+      const msg = await apiPost<Message>(`/api/v1/chats/${chatId}/messages`, {
+        type: 'contact',
+        content: contact.name,
+        mediaMeta: JSON.stringify({ name: contact.name, phone }),
+      });
+      setMessages((prev) => [...prev, msg]);
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function sendVoice(uri: string, durationMs: number) {
+    try {
+      const form = new FormData();
+      form.append('file', { uri, type: 'audio/m4a', name: `voice-${Date.now()}.m4a` } as any);
+      const uploaded = await apiUpload<{ url: string }>('/api/v1/media/upload', form);
+      const msg = await apiPost<Message>(`/api/v1/chats/${chatId}/messages`, {
+        type: 'voice',
+        content: '🎤 Голосовое сообщение',
+        mediaUrl: uploaded.url,
+        mediaMeta: JSON.stringify({ durationMs }),
+      });
+      setMessages((prev) => [...prev, msg]);
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function handleAttachAction(action: 'photo' | 'camera' | 'video' | 'document' | 'location' | 'contact' | 'voice') {
+    switch (action) {
+      case 'photo': await pickImage(); break;
+      case 'camera': await takePhoto(); break;
+      case 'video': await pickVideo(); break;
+      case 'document': await pickDocument(); break;
+      case 'location': await sendLocation(); break;
+      case 'contact': await sendContact(); break;
+      case 'voice': setShowVoiceRecorder(true); break;
+    }
+  }
+
+  async function uploadFile(uri: string, mimeType: string, type: 'image' | 'video' | 'file', filename?: string) {
     try {
       const form = new FormData();
       form.append('file', {
@@ -329,12 +476,14 @@ export default function ChatScreen() {
       const uploaded = await apiUpload<{ url: string }>('/api/v1/media/upload', form);
       const msg = await apiPost<Message>(`/api/v1/chats/${chatId}/messages`, {
         type,
-        content: type === 'image' ? '🖼' : '📎',
+        content: type === 'image' ? '🖼' : type === 'video' ? '🎥' : '📎',
         mediaUrl: uploaded.url,
       });
       setMessages((prev) => [...prev, msg]);
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
     } catch (e) {
       console.error(e);
+      Alert.alert('Ошибка', 'Не удалось отправить файл');
     }
   }
 
@@ -346,16 +495,20 @@ export default function ChatScreen() {
 
     if (item.type === 'system') {
       return (
-        <View style={styles.systemRow}>
+        <Animated.View entering={FadeIn.duration(220)} style={styles.systemRow}>
           <ThemedText variant="caption1" color="secondary" align="center">
             {item.content}
           </ThemedText>
-        </View>
+        </Animated.View>
       );
     }
 
     return (
-      <View style={[styles.bubbleRow, isMe && styles.bubbleRowMe]}>
+      <Animated.View
+        entering={FadeInUp.duration(180)}
+        layout={LinearTransition.springify()}
+        style={[styles.bubbleRow, isMe && styles.bubbleRowMe]}
+      >
         {!isMe && chat?.type !== 'private' ? (
           <View style={styles.bubbleAvatar}>
             {showName ? (
@@ -377,7 +530,11 @@ export default function ChatScreen() {
               setActionMessage(item);
             }}
             onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               if (replyingTo?.id === item.id) setReplyingTo(null);
+              else {
+                apiPost(`/api/v1/messages/${item.id}/reactions`, { emoji: '❤️' }).catch(() => {});
+              }
             }}
             delayLongPress={300}
             style={[
@@ -395,41 +552,115 @@ export default function ChatScreen() {
                 </ThemedText>
               </View>
             )}
-            {item.replyTo && (
-              <View style={[styles.replyQuote, { borderLeftColor: isMe ? 'rgba(255,255,255,0.6)' : theme.accent }]}>
-                <ThemedText variant="caption1" style={{ color: isMe ? theme.sentText : theme.accent, fontWeight: '600' }}>
-                  {item.replyTo.sender?.displayName || item.replyTo.sender?.username || `User ${item.replyTo.senderId}`}
-                </ThemedText>
-                <ThemedText
-                  variant="caption1"
-                  numberOfLines={1}
-                  style={{ color: isMe ? 'rgba(255,255,255,0.85)' : theme.textSecondary }}
+            {item.replyToId && (() => {
+              const reply = messages.find((m) => m.id === item.replyToId);
+              if (!reply) return null;
+              return (
+                <Pressable
+                  onPress={() => {
+                    const idx = messages.findIndex((m) => m.id === reply.id);
+                    if (idx >= 0) listRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
+                  }}
+                  style={[styles.replyQuote, { borderLeftColor: isMe ? 'rgba(255,255,255,0.6)' : theme.accent }]}
                 >
-                  {item.replyTo.content || (item.replyTo.type !== 'text' ? `📎 ${item.replyTo.type}` : '')}
+                  <ThemedText variant="caption1" style={{ color: isMe ? theme.sentText : theme.accent, fontWeight: '600' }}>
+                    {reply.sender?.displayName || (reply.senderId === me?.id ? 'Вы' : `User ${reply.senderId}`)}
+                  </ThemedText>
+                  <ThemedText
+                    variant="caption1"
+                    numberOfLines={1}
+                    style={{ color: isMe ? 'rgba(255,255,255,0.85)' : theme.textSecondary }}
+                  >
+                    {reply.type === 'image' ? '🖼 Фото' : reply.type === 'voice' ? '🎤 Голосовое' : reply.type === 'video' ? '🎥 Видео' : reply.type === 'location' ? '📍 Местоположение' : reply.type === 'contact' ? '👤 Контакт' : (reply.content || '...')}
+                  </ThemedText>
+                </Pressable>
+              );
+            })()}
+            {item.type === 'voice' && item.mediaUrl ? (
+              <VoicePlayer
+                uri={mediaUrl(item.mediaUrl) || ''}
+                durationSec={(() => {
+                  const m = parseMeta(item.mediaMeta);
+                  return Math.floor((m.durationMs || 0) / 1000);
+                })()}
+                isMe={isMe}
+              />
+            ) : item.type === 'location' ? (
+              <Pressable
+                onPress={() => {
+                  const m = parseMeta(item.mediaMeta) || parseMeta(item.content);
+                  Alert.alert('Местоположение', `Широта: ${m.lat?.toFixed?.(6) ?? m.lat}\nДолгота: ${m.lon?.toFixed?.(6) ?? m.lon}`);
+                }}
+                style={styles.locationBubble}
+              >
+                <Icon name="MapPin" size={32} color={isMe ? theme.sentText : theme.accent} />
+                <ThemedText variant="subhead" style={{ color: isMe ? theme.sentText : theme.receivedText, marginTop: 6, fontWeight: '600' }}>
+                  Местоположение
                 </ThemedText>
+                <ThemedText variant="caption1" style={{ color: isMe ? 'rgba(255,255,255,0.85)' : theme.textSecondary, marginTop: 2 }}>
+                  {(() => {
+                    const m = parseMeta(item.mediaMeta) || parseMeta(item.content);
+                    return m.lat != null ? `${Number(m.lat).toFixed(4)}, ${Number(m.lon).toFixed(4)}` : '';
+                  })()}
+                </ThemedText>
+              </Pressable>
+            ) : item.type === 'contact' ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', minWidth: 200 }}>
+                <View style={[styles.contactIcon, { backgroundColor: isMe ? 'rgba(255,255,255,0.2)' : theme.accentMuted }]}>
+                  <Icon name="User" size={24} color={isMe ? theme.sentText : theme.accent} />
+                </View>
+                <View style={{ marginLeft: 10, flex: 1 }}>
+                  <ThemedText variant="headline" style={{ color: isMe ? theme.sentText : theme.receivedText }}>
+                    {item.content}
+                  </ThemedText>
+                  <ThemedText variant="caption1" style={{ color: isMe ? 'rgba(255,255,255,0.85)' : theme.textSecondary }}>
+                    {parseMeta(item.mediaMeta).phone || ''}
+                  </ThemedText>
+                </View>
               </View>
-            )}
-            {item.mediaUrl ? (
-              item.type === 'image' ? (
-                <View>
-                  {mediaUrl(item.mediaUrl) ? (
+            ) : item.type === 'image' && item.mediaUrl ? (
+              <View>
+                {mediaUrl(item.mediaUrl) ? (
+                  <Pressable
+                    onPress={() => {
+                      const idx = messages.findIndex((m) => m.id === item.id);
+                      router.push({ pathname: '/(modals)/image-viewer', params: { uri: mediaUrl(item.mediaUrl) || '', index: String(idx), chatId: String(chatId) } });
+                    }}
+                  >
                     <RNImage
                       source={{ uri: mediaUrl(item.mediaUrl)! }}
                       style={{ width: 220, height: 220, borderRadius: 12, marginBottom: 4 }}
                       resizeMode="cover"
                     />
-                  ) : null}
-                  {item.content && item.content !== '🖼' ? (
-                    <ThemedText variant="body" style={{ color: isMe ? theme.sentText : theme.receivedText }}>
-                      {item.content}
-                    </ThemedText>
-                  ) : null}
-                </View>
-              ) : (
-                <ThemedText variant="body" style={{ color: isMe ? theme.sentText : theme.receivedText }}>
-                  {item.content || '📎 Файл'} {item.mediaUrl ? '↗' : ''}
+                  </Pressable>
+                ) : null}
+                {item.content && item.content !== '🖼' ? (
+                  <ThemedText variant="body" style={{ color: isMe ? theme.sentText : theme.receivedText }}>
+                    {item.content}
+                  </ThemedText>
+                ) : null}
+              </View>
+            ) : item.type === 'video' && item.mediaUrl ? (
+              <View style={{ width: 220, height: 200, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="Video" size={48} color="#fff" />
+                <ThemedText variant="caption1" color="inverted" style={{ color: '#fff', marginTop: 8 }}>
+                  Видео
                 </ThemedText>
-              )
+              </View>
+            ) : item.mediaUrl ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', minWidth: 180 }}>
+                <View style={[styles.fileIcon, { backgroundColor: isMe ? 'rgba(255,255,255,0.2)' : theme.accentMuted }]}>
+                  <Icon name="FileText" size={24} color={isMe ? theme.sentText : theme.accent} />
+                </View>
+                <View style={{ marginLeft: 10, flex: 1 }}>
+                  <ThemedText variant="subhead" style={{ color: isMe ? theme.sentText : theme.receivedText }}>
+                    {item.content || 'Файл'}
+                  </ThemedText>
+                  <ThemedText variant="caption1" style={{ color: isMe ? 'rgba(255,255,255,0.85)' : theme.textSecondary }}>
+                    Документ
+                  </ThemedText>
+                </View>
+              </View>
             ) : (
               <ThemedText
                 variant="body"
@@ -444,30 +675,34 @@ export default function ChatScreen() {
             >
               {formatTime(item.createdAt)}
               {item.editedAt ? ' · изм.' : ''}
-              {isMe ? (item.id ? ' ✓✓' : ' ✓') : ''}
+              {isMe ? ' ✓✓' : ''}
             </ThemedText>
           </Pressable>
           {item.reactions && item.reactions.length > 0 && (
-            <View style={[styles.reactions, isMe ? styles.reactionsMe : styles.reactionsThem]}>
+            <Animated.View entering={FadeInDown.duration(160)} style={[styles.reactions, isMe ? styles.reactionsMe : styles.reactionsThem]}>
               {Object.entries(
                 item.reactions.reduce<Record<string, number>>((acc, r) => {
                   acc[r.emoji] = (acc[r.emoji] || 0) + 1;
                   return acc;
                 }, {})
               ).map(([emoji, count]) => (
-                <View key={emoji} style={[styles.reactionChip, { backgroundColor: theme.bgSecondary }]}>
+                <Pressable
+                  key={emoji}
+                  onPress={() => handleContextAction('react', emoji)}
+                  style={[styles.reactionChip, { backgroundColor: theme.bgSecondary }]}
+                >
                   <ThemedText variant="caption2">{emoji}</ThemedText>
                   {count > 1 && (
                     <ThemedText variant="caption2" style={{ color: theme.textSecondary, marginLeft: 2 }}>
                       {count}
                     </ThemedText>
                   )}
-                </View>
+                </Pressable>
               ))}
-            </View>
+            </Animated.View>
           )}
         </View>
-      </View>
+      </Animated.View>
     );
   }
 
@@ -480,6 +715,7 @@ export default function ChatScreen() {
   }
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <>
       <Stack.Screen
         options={{
@@ -507,7 +743,7 @@ export default function ChatScreen() {
       <SafeAreaView edges={['bottom']} style={[styles.container, { backgroundColor: theme.bg }]}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={0}
+          keyboardVerticalOffset={headerHeight}
           style={{ flex: 1 }}
         >
           {chat.pinnedMessageId && (
@@ -540,7 +776,7 @@ export default function ChatScreen() {
           <FlatList
             ref={listRef}
             data={messages}
-            keyExtractor={(item) => String(item.id)}
+            keyExtractor={(item, index) => item.id != null ? `m-${item.id}` : `idx-${index}-${item.createdAt || ''}`}
             renderItem={renderMessage}
             inverted={false}
             contentContainerStyle={{ paddingVertical: Spacing.three }}
@@ -599,10 +835,13 @@ export default function ChatScreen() {
           )}
 
           <View style={[styles.composer, { backgroundColor: theme.bg, borderTopColor: theme.hairline }]}>
-            <Pressable onPress={pickImage} style={styles.attachBtn}>
-              <Icon name="ImagePlus" size={22} color={theme.accent} />
-            </Pressable>
-            <Pressable onPress={pickDocument} style={styles.attachBtn}>
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowAttachSheet(true);
+              }}
+              style={({ pressed }) => [styles.attachBtn, { transform: [{ scale: pressed ? 0.9 : 1 }] }]}
+            >
               <Icon name="Paperclip" size={22} color={theme.accent} />
             </Pressable>
             <View style={[styles.composerInput, { backgroundColor: theme.bgSecondary }]}>
@@ -621,18 +860,34 @@ export default function ChatScreen() {
                 multiline
                 style={[styles.composerTextInput, { color: theme.text }]}
                 maxLength={4096}
+                blurOnSubmit={false}
               />
             </View>
-            <Pressable
-              onPress={send}
-              disabled={!input.trim() || sending}
-              style={({ pressed }) => [
-                styles.sendBtn,
-                { backgroundColor: input.trim() ? theme.accent : theme.bgTertiary, opacity: pressed ? 0.7 : 1 },
-              ]}
-            >
-              <Icon name="Send" size={18} color={input.trim() ? '#fff' : theme.textTertiary} />
-            </Pressable>
+            {input.trim() ? (
+              <Pressable
+                onPress={send}
+                disabled={sending}
+                style={({ pressed }) => [
+                  styles.sendBtn,
+                  { backgroundColor: theme.accent, transform: [{ scale: pressed ? 0.85 : 1 }] },
+                ]}
+              >
+                <Icon name="Send" size={18} color="#fff" />
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setShowVoiceRecorder(true);
+                }}
+                style={({ pressed }) => [
+                  styles.sendBtn,
+                  { backgroundColor: theme.accent, transform: [{ scale: pressed ? 0.85 : 1 }] },
+                ]}
+              >
+                <Icon name="Mic" size={18} color="#fff" />
+              </Pressable>
+            )}
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -644,12 +899,28 @@ export default function ChatScreen() {
         onClose={() => setActionMessage(null)}
         onAction={handleContextAction}
       />
+      <AttachSheet
+        visible={showAttachSheet}
+        onClose={() => setShowAttachSheet(false)}
+        onSelect={handleAttachAction}
+      />
+      <VoiceRecorder
+        visible={showVoiceRecorder}
+        onClose={() => setShowVoiceRecorder(false)}
+        onSend={sendVoice}
+      />
     </>
+    </GestureHandlerRootView>
   );
 }
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function parseMeta(s: string | null | undefined): Record<string, any> {
+  if (!s) return {};
+  try { return JSON.parse(s) || {}; } catch { return {}; }
 }
 
 const styles = StyleSheet.create({
@@ -773,5 +1044,24 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  locationBubble: {
+    width: 220,
+    paddingVertical: Spacing.three,
+    alignItems: 'center',
+  },
+  contactIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fileIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
