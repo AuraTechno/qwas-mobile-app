@@ -11,6 +11,7 @@ import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
 import { Icon } from '@/components/icon';
 import { useAuth } from '@/store/auth';
+import { useSettings, type ThemeMode } from '@/store/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { Spacing, Radius } from '@/constants/theme';
 
@@ -18,6 +19,16 @@ export default function SettingsScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { user, logout } = useAuth();
+  const { theme: themeMode, pushEnabled, soundEnabled, vibrateEnabled, setTheme, setPush, setSound, setVibrate } = useSettings();
+
+  function pickTheme() {
+    Alert.alert('Тема оформления', undefined, [
+      { text: 'Авто', onPress: () => setTheme('auto') },
+      { text: 'Светлая', onPress: () => setTheme('light') },
+      { text: 'Тёмная', onPress: () => setTheme('dark') },
+      { text: 'Отмена', style: 'cancel' },
+    ]);
+  }
 
   function handleLogout() {
     Alert.alert('Выход', 'Вы уверены, что хотите выйти?', [
@@ -41,42 +52,54 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.profile}>
-          <Avatar username={user?.username || '?'} displayName={user?.displayName} size={80} />
-          <View style={{ flex: 1, marginLeft: Spacing.four }}>
-            <ThemedText variant="title3">{user?.displayName}</ThemedText>
-            <ThemedText variant="subhead" color="secondary">@{user?.username}</ThemedText>
-            {user?.bio ? (
-              <ThemedText variant="subhead" color="secondary" style={{ marginTop: 4 }}>
-                {user.bio}
+          <Pressable
+            onPress={() => router.push('/(modals)/edit-profile')}
+            style={styles.profile}
+          >
+            <Avatar username={user?.username || '?'} displayName={user?.displayName} size={80} />
+            <View style={{ flex: 1, marginLeft: Spacing.four }}>
+              <ThemedText variant="title3">{user?.displayName}</ThemedText>
+              <ThemedText variant="subhead" color="secondary">@{user?.username}</ThemedText>
+              {user?.bio ? (
+                <ThemedText variant="subhead" color="secondary" style={{ marginTop: 4 }}>
+                  {user.bio}
+                </ThemedText>
+              ) : null}
+              <ThemedText variant="caption1" color="accent" style={{ marginTop: 4 }}>
+                Редактировать профиль
               </ThemedText>
-            ) : null}
-          </View>
+            </View>
+          </Pressable>
         </View>
 
         <View style={styles.section}>
           <ThemedText variant="footnote" color="secondary" style={styles.sectionHeader}>
             АККАУНТ
           </ThemedText>
-          <Row icon="User" title="Редактировать профиль" theme={theme} onPress={() => {}} />
-          <Row icon="KeyRound" title="Безопасность" theme={theme} onPress={() => {}} />
-          <Row icon="Smartphone" title="Активные устройства" theme={theme} onPress={() => {}} />
+          <Row icon="KeyRound" title="Безопасность" theme={theme} onPress={() => Alert.alert('Скоро')} />
+          <Row icon="Smartphone" title="Активные устройства" theme={theme} onPress={() => Alert.alert('Скоро')} />
         </View>
 
         <View style={styles.section}>
           <ThemedText variant="footnote" color="secondary" style={styles.sectionHeader}>
             ВНЕШНИЙ ВИД
           </ThemedText>
-          <Row icon="Palette" title="Тема оформления" value="Авто" theme={theme} onPress={() => {}} />
-          <Row icon="Languages" title="Язык" value="Русский" theme={theme} onPress={() => {}} />
+          <Row icon="Palette" title="Тема оформления" value={themeMode === 'auto' ? 'Авто' : themeMode === 'light' ? 'Светлая' : 'Тёмная'} theme={theme} onPress={pickTheme} />
         </View>
 
         <View style={styles.section}>
           <ThemedText variant="footnote" color="secondary" style={styles.sectionHeader}>
             УВЕДОМЛЕНИЯ
           </ThemedText>
-          <Row icon="Bell" title="Push-уведомления" theme={theme} right={<Switch value={true} />} />
-          <Row icon="Volume2" title="Звуки" theme={theme} right={<Switch value={true} />} />
-          <Row icon="Vibrate" title="Вибрация" theme={theme} right={<Switch value={true} />} />
+          <Row icon="Bell" title="Push-уведомления" theme={theme} right={
+            <Switch value={pushEnabled} onValueChange={setPush} trackColor={{ true: theme.accent }} />
+          } />
+          <Row icon="Volume2" title="Звуки" theme={theme} right={
+            <Switch value={soundEnabled} onValueChange={setSound} trackColor={{ true: theme.accent }} />
+          } />
+          <Row icon="Vibrate" title="Вибрация" theme={theme} right={
+            <Switch value={vibrateEnabled} onValueChange={setVibrate} trackColor={{ true: theme.accent }} />
+          } />
         </View>
 
         <View style={styles.section}>
