@@ -14,6 +14,7 @@ import { Icon } from '@/components/icon';
 import { useTheme } from '@/hooks/use-theme';
 import { Spacing, Radius } from '@/constants/theme';
 import { apiGet, apiPost } from '@/api/client';
+import * as Haptics from 'expo-haptics';
 import type { Chat } from '@/types';
 
 export default function ChatsScreen() {
@@ -75,6 +76,25 @@ export default function ChatsScreen() {
           headerLargeTitle: true,
           headerSearchBarOptions: undefined,
           headerStyle: { backgroundColor: theme.bg },
+          headerRight: () => (
+            <Pressable
+              onPress={async () => {
+                const unread = chats.filter((c) => (c.unreadCount || 0) > 0);
+                if (unread.length === 0) {
+                  Alert.alert('Готово', 'Нет непрочитанных чатов');
+                  return;
+                }
+                for (const c of unread) {
+                  try { await apiPost(`/api/v1/chats/${c.id}/read`, {}); } catch {}
+                }
+                setChats((prev) => prev.map((c) => ({ ...c, unreadCount: 0 })));
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }}
+              style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, padding: 6 })}
+            >
+              <Icon name="CheckCheck" size={22} color={theme.accent} />
+            </Pressable>
+          ),
         }}
       />
       <SafeAreaView edges={['top']} style={[styles.container, { backgroundColor: theme.bg }]}>
