@@ -71,6 +71,8 @@ export default function ChatScreen() {
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   const listRef = useRef<FlatList<Message>>(null);
 
@@ -117,6 +119,10 @@ export default function ChatScreen() {
     loadChat();
     loadMessages(true);
   }, [chatId]);
+
+  useEffect(() => {
+    return () => { setSelectMode(false); setSelectedIds(new Set()); };
+  }, []);
 
   const headerHeight = useHeaderHeight();
 
@@ -276,6 +282,10 @@ export default function ChatScreen() {
           Clipboard.setString(msg.content);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
+        break;
+      case 'select':
+        setSelectMode(true);
+        setSelectedIds(new Set([msg.id]));
         break;
       case 'edit':
         if (msg.type === 'text') {
@@ -529,12 +539,29 @@ export default function ChatScreen() {
           <Pressable
             onLongPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              setActionMessage(item);
+              if (selectMode) {
+                setSelectedIds((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(item.id)) next.delete(item.id);
+                  else next.add(item.id);
+                  return next;
+                });
+              } else {
+                setActionMessage(item);
+              }
             }}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              if (replyingTo?.id === item.id) setReplyingTo(null);
-              else {
+              if (selectMode) {
+                setSelectedIds((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(item.id)) next.delete(item.id);
+                  else next.add(item.id);
+                  return next;
+                });
+              } else if (replyingTo?.id === item.id) {
+                setReplyingTo(null);
+              } else {
                 apiPost(`/api/v1/messages/${item.id}/reactions`, { emoji: '❤️' }).catch(() => {});
               }
             }}
@@ -871,6 +898,58 @@ export default function ChatScreen() {
             </View>
           )}
 
+          {selectMode ? (
+            <View style={[styles.toolbar, { backgroundColor: theme.bg, borderTopColor: theme.hairline }]}>
+              <Pressable
+                onPress={() => { setSelectMode(false); setSelectedIds(new Set()); }}
+                style={({ pressed }) => [styles.toolbarBtn, { opacity: pressed ? 0.5 : 1 }]}
+              >
+                <Icon name="X" size={22} color={theme.accent} />
+              </Pressable>
+              <ThemedText variant="headline" style={{ flex: 1, marginLeft: 8 }}>
+                {selectedIds.size === 0 ? 'Выберите сообщения' : `Выбрано: ${selectedIds.size}`}
+              </ThemedText>
+              <Pressable
+                onPress={async () => {
+                  if (selectedIds.size === 0) return;
+                  Alert.alert('Удалить сообщения?', `Будет удалено: ${selectedIds.size}`, [
+                    { text: 'Отмена', style: 'cancel' },
+                    {
+                      text: 'Удалить', style: 'destructive', onPress: async () => {
+                        const ids = Array.from(selectedIds);
+                        for (const id of ids) {
+                          try { await apiDelete(`/api/v1/messages/${id}`); } catch {}
+                        }
+                        setMessages((prev) => prev.filter((m) => !selectedIds.has(m.id)));
+                        setSelectMode(false);
+                        setSelectedIds(new Set());
+                      },
+                    },
+                  ]);
+                }}
+                style={({ pressed }) => [styles.toolbarBtn, { opacity: selectedIds.size === 0 ? 0.3 : pressed ? 0.5 : 1 }]}
+                disabled={selectedIds.size === 0}
+              >
+                <Icon name="Trash2" size={22} color={theme.error} />
+              </Pressable>
+              <Pressable
+                onPress={async () => {
+                  if (selectedIds.size === 0) return;
+                  const first = messages.find((m) => selectedIds.has(m.id));
+                  if (first) {
+                    setForwardingMessage(first);
+                    setSelectMode(false);
+                    setSelectedIds(new Set());
+                    router.push({ pathname: '/(modals)/forward', params: { messageId: String(first.id) } });
+                  }
+                }}
+                style={({ pressed }) => [styles.toolbarBtn, { opacity: selectedIds.size === 0 ? 0.3 : pressed ? 0.5 : 1 }]}
+                disabled={selectedIds.size === 0}
+              >
+                <Icon name="Share2" size={22} color={theme.accent} />
+              </Pressable>
+            </View>
+          ) : (
           <View style={[styles.composer, { backgroundColor: theme.bg, borderTopColor: theme.hairline }]}>
             <Pressable
               onPress={() => {
@@ -926,6 +1005,7 @@ export default function ChatScreen() {
               </Pressable>
             )}
           </View>
+          )}
         </KeyboardAvoidingView>
       </SafeAreaView>
       <MessageContextMenu
@@ -1002,9 +1082,13 @@ const styles = StyleSheet.create({
     maxHeight: 120,
   },
   composerTextInput: {
-    fontSize: 16,
-    minHeight: 24,
+    fontSize: 16, paddingHorizontal: 4, paddingVertical: Platform.OS === 'ios' ? 8 : 4, maxHeight: 120,
   },
+  toolbar: {
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  toolbarBtn: { padding: 8 },
   sendBtn: {
     width: 36,
     height: 36,

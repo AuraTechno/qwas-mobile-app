@@ -12,7 +12,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { Spacing, Radius } from '@/constants/theme';
 import type { Message } from '@/types';
 
-export type MessageAction = 'reply' | 'edit' | 'delete' | 'copy' | 'pin' | 'react' | 'forward';
+export type MessageAction = 'reply' | 'edit' | 'delete' | 'copy' | 'pin' | 'react' | 'forward' | 'select';
 
 interface Props {
   visible: boolean;
@@ -71,6 +71,7 @@ export default function MessageContextMenu({ visible, message, isMe, isPinned, o
             <ActionRow icon="Reply" label="Ответить" onPress={() => handleAction('reply')} />
             <ActionRow icon="Share2" label="Переслать" onPress={() => handleAction('forward')} />
             <ActionRow icon="Copy" label="Копировать текст" onPress={() => handleAction('copy')} />
+            <ActionRow icon="CheckSquare" label="Выбрать" onPress={() => handleAction('select')} />
             {isMe && message.type === 'text' && (
               <ActionRow icon="Edit" label="Редактировать" onPress={() => handleAction('edit')} />
             )}
