@@ -60,7 +60,7 @@ const config: ExpoConfig = {
       'android.permission.ACCESS_COARSE_LOCATION',
     ],
     blockedPermissions: [],
-    googleServicesFile: './google-services.json',
+    // googleServicesFile: './google-services.json',
   },
 
   web: {
@@ -118,7 +118,6 @@ const config: ExpoConfig = {
 
   experiments: {
     typedRoutes: true,
-    reactCompiler: true,
   },
 
   extra: {
@@ -129,12 +128,7 @@ const config: ExpoConfig = {
   },
 
   updates: {
-    fallbackToCacheTimeout: 0,
-    url: 'https://u.expo.dev/qwas-mobile-app',
-  },
-
-  runtimeVersion: {
-    policy: 'appVersion',
+    enabled: false,
   },
 };
 

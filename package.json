@@ -57,15 +57,13 @@
     "typescript": "~5.7.0"
   },
   "scripts": {
-    "start": "expo start --lan",
+    "start": "set EXPO_OFFLINE=1 && expo start --lan",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo start --android --lan",
-    "ios": "expo start --ios --lan",
-    "web": "expo start --web",
-    "start-offline": "expo start --offline",
+    "android": "set EXPO_OFFLINE=1 && expo start --android --lan",
+    "ios": "set EXPO_OFFLINE=1 && expo start --ios --lan",
+    "web": "set EXPO_OFFLINE=1 && expo start --web",
     "start-tunnel": "expo start --tunnel",
-    "lint": "expo lint",
-    "postinstall": "node postinstall.js"
+    "lint": "expo lint"
   },
   "private": true
 }
