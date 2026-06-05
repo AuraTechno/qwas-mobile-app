@@ -54,14 +54,23 @@ export default function ChatInfoScreen() {
     : chat?.type === 'channel' ? 'Канал'
     : `Группа · ${chat?.members?.length || 0} участников`;
 
-  async function toggleMute(v: boolean) {
-    setMuted(v);
+  async function toggleMute(hours: number) {
     try {
-      await apiPatch(`/api/v1/chats/${chatId}`, { isMuted: v });
+      const res = await apiPost<{ ok: boolean; isMuted: boolean }>(`/api/v1/chats/${chatId}/mute`, { durationHours: hours });
+      setMuted(!!res.isMuted);
     } catch (e) {
       console.error(e);
-      setMuted(!v);
     }
+  }
+
+  function pickMuteDuration() {
+    Alert.alert('Уведомления', undefined, [
+      { text: muted ? 'Включить' : '8 часов', onPress: () => toggleMute(muted ? 0 : 8) },
+      { text: 'На 1 день', onPress: () => toggleMute(24) },
+      { text: 'На 3 дня', onPress: () => toggleMute(72) },
+      { text: 'Навсегда', onPress: () => toggleMute(24 * 365 * 100) },
+      { text: 'Отмена', style: 'cancel' },
+    ]);
   }
 
   async function clearHistory() {
@@ -147,14 +156,19 @@ export default function ChatInfoScreen() {
                   <ActionButton icon="Phone" label="Позвонить" onPress={() => Alert.alert('Скоро', 'Звонки в разработке')} />
                   <ActionButton icon="Video" label="Видео" onPress={() => Alert.alert('Скоро', 'Видеозвонки в разработке')} />
                   <ActionButton icon="Search" label="Поиск" onPress={() => Alert.alert('Скоро', 'Поиск в разработке')} />
-                  <ActionButton icon="BellOff" label="Без звука" onPress={() => toggleMute(!muted)} muted={muted} />
+                  <ActionButton icon="BellOff" label="Без звука" onPress={pickMuteDuration} muted={muted} />
                 </View>
               )}
 
               <View style={[styles.section, { backgroundColor: theme.bgSecondary }]}>
                 <SettingRow icon={muted ? 'BellOff' : 'Bell'} label="Уведомления" right={
-                  <Switch value={!muted} onValueChange={(v) => toggleMute(!v)} trackColor={{ true: theme.accent }} />
-                } />
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <ThemedText variant="subhead" color="tertiary" style={{ marginRight: 8 }}>
+                      {muted ? 'Без звука' : 'Включены'}
+                    </ThemedText>
+                    <Icon name="ChevronRight" size={18} color={theme.textTertiary} />
+                  </View>
+                } onPress={pickMuteDuration} />
                 <SettingRow icon="Search" label="Поиск в чате" onPress={() => Alert.alert('Скоро')} />
                 {chat.type !== 'private' && (
                   <SettingRow icon="UserPlus" label="Добавить участника" onPress={() => Alert.alert('Скоро')} />
