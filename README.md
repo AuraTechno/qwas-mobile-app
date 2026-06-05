@@ -1,56 +1,97 @@
-# Welcome to your Expo app 👋
+# QWAS Mobile
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+iOS-style messenger app (iOS + Android) built with React Native + Expo SDK 56.
 
-## Get started
+**Backend**: https://github.com/AuraTechno/qwas-mobile-server (Go + Fiber)
+**API**: https://api-qwas.academinctools.pw
 
-1. Install dependencies
+## Stack
 
-   ```bash
-   npm install
-   ```
+- **Framework**: Expo SDK 56 + React Native 0.85 + React 19.2
+- **Routing**: expo-router v3 (file-based, type-safe)
+- **State**: Zustand
+- **UI**: iOS HIG design system, light/dark, glassmorphism
+- **Icons**: lucide-react-native
+- **Animations**: react-native-reanimated v3
+- **Real-time**: WebSocket (custom manager)
+- **Calls**: @stream-io/react-native-webrtc
+- **Storage**: expo-secure-store (JWT)
+- **Media**: expo-image-picker, expo-av, expo-camera, expo-document-picker
+- **Push**: expo-notifications + FCM (Android)
+- **Updates**: expo-updates (OTA JS) + custom APK download
 
-2. Start the app
+## Project structure
 
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+app/
+├── src/
+│   ├── app/                    # Routes (expo-router)
+│   │   ├── _layout.tsx         # Root: providers, auth gate
+│   │   ├── (auth)/             # Auth flow (welcome, login, register)
+│   │   ├── (main)/             # Main app (tabs)
+│   │   │   ├── chats/          # Chats list + [id] detail
+│   │   │   ├── contacts.tsx
+│   │   │   ├── calls.tsx
+│   │   │   └── settings.tsx
+│   │   └── (modals)/           # Modals (new-chat, chat-info)
+│   ├── api/                    # API client + WebSocket
+│   ├── components/             # GlassCard, Button, TextField, Icon, Avatar
+│   ├── constants/              # iOS theme (colors, typography, spacing)
+│   ├── hooks/                  # useTheme, useColorScheme
+│   ├── store/                  # Zustand stores (auth, ...)
+│   └── types/                  # TypeScript interfaces
+├── assets/images/              # Paper plane icon + Android adaptive
+├── app.config.ts               # Expo config (name, bundle, plugins)
+├── eas.json                    # EAS Build profiles
+└── scripts/                    # generate-icons.js
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Development
 
-### Other setup steps
+### Prerequisites
+- Node 22.13+ (tested with 24.15)
+- Expo CLI: `npm install -g eas-cli`
+- Expo account at https://expo.dev
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+### Setup
+```bash
+npm install
+```
 
-## Learn more
+### Run locally (Expo Go)
+```bash
+npx expo start
+# Scan QR with Expo Go app
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+**Note**: SDK 56 Expo Go is not in App Store. Use `npx expo start --tunnel` + install Expo Go from CLI on Android, or use TestFlight on iOS.
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+### Build for device
+```bash
+# Development build (Android APK)
+eas build --profile development --platform android
 
-## Join the community
+# Production
+eas build --profile production --platform android
+```
 
-Join our community of developers creating universal apps.
+## Configuration
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+API URL is configured in `app.config.ts`:
+```ts
+extra: { apiUrl: 'https://api-qwas.academinctools.pw' }
+```
+
+Or override via `EXPO_PUBLIC_API_URL` env var.
+
+## App identifiers
+
+- **Name**: QWAS
+- **iOS bundle**: com.auratechno.qwas
+- **Android package**: com.auratechno.qwas
+- **Slug**: qwas
+- **Scheme**: qwas://
+
+## License
+
+MIT © AuraTechno

@@ -1,195 +1,91 @@
-// Генерация PNG-иконок для QWAS Mobile (Expo).
-// Pure Node.js — без внешних зависимостей.
+// Генерация PNG-иконок для QWAS Mobile (Expo) — через sharp.
 const fs = require('fs');
 const path = require('path');
-const zlib = require('zlib');
+const sharp = require('sharp');
 
 const OUT = path.join(__dirname, '..', 'assets', 'images');
 
-function crc32(buf) {
-  let c, t = [];
-  for (let n = 0; n < 256; n++) {
-    c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    t[n] = c >>> 0;
-  }
-  let crc = 0xffffffff;
-  for (let i = 0; i < buf.length; i++) crc = t[(crc ^ buf[i]) & 0xff] ^ (crc >>> 8);
-  return (crc ^ 0xffffffff) >>> 0;
+// iOS-style gradient: #5e8ee7 → #2b5278
+function svgPaperPlane(size) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#5e8ee7"/>
+      <stop offset="100%" stop-color="#2b5278"/>
+    </linearGradient>
+  </defs>
+  <circle cx="512" cy="512" r="512" fill="url(#bg)"/>
+  <g transform="translate(512 512) rotate(-30)">
+    <path d="M -220 180 L 270 -50 L -180 -220 Z" fill="white" fill-opacity="0.95"/>
+    <path d="M -220 180 L 270 -50 L 80 60 Z" fill="white" fill-opacity="0.65"/>
+  </g>
+</svg>`;
 }
 
-function chunk(type, data) {
-  const len = Buffer.alloc(4);
-  len.writeUInt32BE(data.length, 0);
-  const typeBuf = Buffer.from(type, 'ascii');
-  const crcInput = Buffer.concat([typeBuf, data]);
-  const crcBuf = Buffer.alloc(4);
-  crcBuf.writeUInt32BE(crcInput, 0);
-  return Buffer.concat([len, typeBuf, data, crcBuf]);
+function svgBackground(size) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#5e8ee7"/>
+      <stop offset="100%" stop-color="#2b5278"/>
+    </linearGradient>
+  </defs>
+  <rect width="${size}" height="${size}" fill="url(#bg)"/>
+</svg>`;
 }
 
-function makePng(width, height, pixelFn) {
-  const rowBytes = width * 4;
-  const raw = Buffer.alloc((rowBytes + 1) * height);
-  for (let y = 0; y < height; y++) {
-    raw[y * (rowBytes + 1)] = 0;
-    for (let x = 0; x < width; x++) {
-      const [r, g, b, a] = pixelFn(x, y);
-      const off = y * (rowBytes + 1) + 1 + x * 4;
-      raw[off] = r;
-      raw[off + 1] = g;
-      raw[off + 2] = b;
-      raw[off + 3] = a;
-    }
-  }
-  const compressed = zlib.deflateSync(raw, { level: 9 });
-  const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(width, 0);
-  ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = 8;
-  ihdr[9] = 6;
-  return Buffer.concat([
-    sig,
-    chunk('IHDR', ihdr),
-    chunk('IDAT', compressed),
-    chunk('IEND', Buffer.alloc(0))
-  ]);
+function svgForeground(size) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 1024 1024">
+  <g transform="translate(512 512) rotate(-30)">
+    <path d="M -220 180 L 270 -50 L -180 -220 Z" fill="white"/>
+  </g>
+</svg>`;
 }
 
-function lerp(a, b, t) { return Math.round(a + (b - a) * t); }
-
-function brandColor(t) {
-  // Gradient #5e8ee7 → #2b5278
-  return [lerp(94, 43, t), lerp(142, 82, t), lerp(231, 120, t), 255];
+function svgMonochrome(size) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 1024 1024">
+  <circle cx="512" cy="512" r="512" fill="white"/>
+  <g transform="translate(512 512) rotate(-30)">
+    <path d="M -220 180 L 270 -50 L -180 -220 Z" fill="black"/>
+  </g>
+</svg>`;
 }
 
-function pointInTri(px, py, v1, v2, v3) {
-  const sign = (p1, p2, p3) =>
-    (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
-  const d1 = sign({ x: px, y: py }, v1, v2);
-  const d2 = sign({ x: px, y: py }, v2, v3);
-  const d3 = sign({ x: px, y: py }, v3, v1);
-  const hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
-  const hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
-  return !(hasNeg && hasPos);
-}
-
-// Paper plane icon: gradient circle + white paper plane
-function paperPlane(size) {
-  const cx = size / 2;
-  const cy = size / 2;
-  const r = size * 0.45;
-  const planeSize = size * 0.22;
-
-  return (x, y) => {
-    const dy = y / size;
-    const c = brandColor(dy);
-    const dx = x - cx;
-    const dy2 = y - cy;
-    const dist = Math.sqrt(dx * dx + dy2 * dy2);
-
-    if (dist > r) return [0, 0, 0, 0];
-
-    const ang = -Math.PI / 6;
-    const cos = Math.cos(ang);
-    const sin = Math.sin(ang);
-    const rx = dx * cos - dy2 * sin;
-    const ry = dx * sin + dy2 * cos;
-
-    const v1 = { x: -planeSize * 0.5, y: planeSize * 0.4 };
-    const v2 = { x: planeSize * 0.6, y: -planeSize * 0.1 };
-    const v3 = { x: -planeSize * 0.4, y: -planeSize * 0.5 };
-
-    if (pointInTri(rx, ry, v1, v2, v3)) {
-      return [255, 255, 255, 230];
-    }
-    return c;
-  };
-}
-
-// Solid background gradient (no plane) — для Android adaptive
-function solidBackground(size) {
-  return (x, y) => brandColor(y / size);
-}
-
-// Adaptive icon foreground: только paper plane на прозрачном фоне
-function adaptiveForeground(size) {
-  const cx = size / 2;
-  const cy = size / 2;
-  const planeSize = size * 0.18;
-
-  return (x, y) => {
-    const dx = x - cx;
-    const dy2 = y - cy;
-    const dist = Math.sqrt(dx * dx + dy2 * dy2);
-    const ang = -Math.PI / 6;
-    const cos = Math.cos(ang);
-    const sin = Math.sin(ang);
-    const rx = dx * cos - dy2 * sin;
-    const ry = dx * sin + dy2 * cos;
-    const v1 = { x: -planeSize * 0.5, y: planeSize * 0.4 };
-    const v2 = { x: planeSize * 0.6, y: -planeSize * 0.1 };
-    const v3 = { x: -planeSize * 0.4, y: -planeSize * 0.5 };
-    if (pointInTri(rx, ry, v1, v2, v3)) return [255, 255, 255, 255];
-    return [0, 0, 0, 0];
-  };
-}
-
-// Monochrome version (для Android themed icons)
-function monochrome(size) {
-  const cx = size / 2;
-  const cy = size / 2;
-  const r = size * 0.45;
-  const planeSize = size * 0.22;
-
-  return (x, y) => {
-    const dx = x - cx;
-    const dy2 = y - cy;
-    const dist = Math.sqrt(dx * dx + dy2 * dy2);
-    if (dist > r) return [0, 0, 0, 0];
-
-    const ang = -Math.PI / 6;
-    const cos = Math.cos(ang);
-    const sin = Math.sin(ang);
-    const rx = dx * cos - dy2 * sin;
-    const ry = dx * sin + dy2 * cos;
-    const v1 = { x: -planeSize * 0.5, y: planeSize * 0.4 };
-    const v2 = { x: planeSize * 0.6, y: -planeSize * 0.1 };
-    const v3 = { x: -planeSize * 0.4, y: -planeSize * 0.5 };
-    if (pointInTri(rx, ry, v1, v2, v3)) return [0, 0, 0, 255];
-    return [255, 255, 255, 255];
-  };
-}
-
-function generate(size, fileName, drawFn) {
-  const buf = makePng(size, size, drawFn);
+async function generate(fileName, svg, size) {
   const out = path.join(OUT, fileName);
-  fs.writeFileSync(out, buf);
-  console.log(`✓ ${fileName} (${size}x${size}, ${buf.length} bytes)`);
+  await sharp(Buffer.from(svg)).resize(size, size).png().toFile(out);
+  const stat = fs.statSync(out);
+  console.log(`✓ ${fileName} (${size}x${size}, ${stat.size} bytes)`);
 }
 
-console.log('Генерация иконок QWAS Mobile…');
+async function main() {
+  console.log('Генерация иконок QWAS Mobile…');
 
-// Main app icon (Expo)
-generate(1024, 'icon.png', paperPlane(1024));
+  // Main app icon (Expo) - 1024x1024
+  await generate('icon.png', svgPaperPlane(1024), 1024);
 
-// iOS-specific (если Expo попросит)
-generate(180, 'icon-180.png', paperPlane(180));
-generate(120, 'icon-120.png', paperPlane(120));
-generate(60, 'icon-60.png', paperPlane(60));
+  // iOS-specific
+  await generate('icon-180.png', svgPaperPlane(180), 180);
+  await generate('icon-120.png', svgPaperPlane(120), 120);
+  await generate('icon-60.png', svgPaperPlane(60), 60);
 
-// Android adaptive: foreground (plane on transparent), background (gradient solid)
-generate(1024, 'android-icon-foreground.png', adaptiveForeground(1024));
-generate(1024, 'android-icon-background.png', solidBackground(1024));
-generate(1024, 'android-icon-monochrome.png', monochrome(1024));
+  // Android adaptive
+  await generate('android-icon-foreground.png', svgForeground(1024), 1024);
+  await generate('android-icon-background.png', svgBackground(1024), 1024);
+  await generate('android-icon-monochrome.png', svgMonochrome(1024), 1024);
 
-// Splash icon (smaller paper plane)
-generate(1024, 'splash-icon.png', paperPlane(1024));
+  // Splash icon
+  await generate('splash-icon.png', svgPaperPlane(1024), 1024);
 
-// Favicon
-generate(48, 'favicon.png', paperPlane(48));
-generate(32, 'favicon-32.png', paperPlane(32));
-generate(16, 'favicon-16.png', paperPlane(16));
+  // Favicon
+  await generate('favicon.png', svgPaperPlane(48), 48);
+  await generate('favicon-32.png', svgPaperPlane(32), 32);
+  await generate('favicon-16.png', svgPaperPlane(16), 16);
 
-console.log('Готово!');
+  console.log('Готово!');
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
