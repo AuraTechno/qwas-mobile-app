@@ -114,10 +114,11 @@ interface Props {
   size?: number;
   color?: string;
   strokeWidth?: number;
+  style?: any;
 }
 
-export function Icon({ name, size = 22, color, strokeWidth = 2 }: Props) {
+export function Icon({ name, size = 22, color, strokeWidth = 2, style }: Props) {
   const LucideIcon = ICONS[name];
   if (!LucideIcon) return null;
-  return <LucideIcon size={size} color={color} strokeWidth={strokeWidth} />;
+  return <LucideIcon size={size} color={color} strokeWidth={strokeWidth} style={style} />;
 }
