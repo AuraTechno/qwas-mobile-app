@@ -69,6 +69,8 @@ export default function ChatScreen() {
   const [showAttachSheet, setShowAttachSheet] = useState(false);
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const listRef = useRef<FlatList<Message>>(null);
 
@@ -738,6 +740,25 @@ export default function ChatScreen() {
           headerStyle: { backgroundColor: theme.bg },
           headerTintColor: theme.accent,
           headerShadowVisible: false,
+          headerRight: () => (
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {chat.type === 'private' && (
+                <Pressable onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  apiPost(`/api/v1/chats/${chatId}/calls`, { type: 'audio' })
+                    .then((data: any) => {
+                      if (data.call?.id) router.push({ pathname: '/(modals)/call', params: { callId: data.call.id, chatId: String(chatId), type: 'audio', outgoing: '1' } });
+                    })
+                    .catch((e) => Alert.alert('Ошибка', e?.message || 'Не удалось'));
+                }} style={{ padding: 4 }}>
+                  <Icon name="Phone" size={22} color={theme.accent} />
+                </Pressable>
+              )}
+              <Pressable onPress={() => setShowSearch(!showSearch)} style={{ padding: 4 }}>
+                <Icon name="Search" size={22} color={theme.accent} />
+              </Pressable>
+            </View>
+          ),
         }}
       />
       <SafeAreaView edges={['bottom']} style={[styles.container, { backgroundColor: theme.bg }]}>
@@ -746,6 +767,22 @@ export default function ChatScreen() {
           keyboardVerticalOffset={headerHeight}
           style={{ flex: 1 }}
         >
+          {showSearch && (
+            <View style={[styles.searchBar, { backgroundColor: theme.bgSecondary, borderBottomColor: theme.hairline }]}>
+              <Icon name="Search" size={16} color={theme.textSecondary} />
+              <TextInput
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Поиск в чате"
+                placeholderTextColor={theme.textPlaceholder}
+                autoFocus
+                style={[styles.searchInput, { color: theme.text }]}
+              />
+              <Pressable onPress={() => { setShowSearch(false); setSearchQuery(''); }} style={{ padding: 4 }}>
+                <Icon name="X" size={18} color={theme.textSecondary} />
+              </Pressable>
+            </View>
+          )}
           {chat.pinnedMessageId && (
             <View style={[styles.pinnedBanner, { backgroundColor: theme.bgSecondary, borderBottomColor: theme.hairline }]}>
               <Icon name="Pin" size={14} color={theme.accent} />
@@ -775,7 +812,7 @@ export default function ChatScreen() {
           )}
           <FlatList
             ref={listRef}
-            data={messages}
+            data={searchQuery.trim() ? messages.filter((m) => m.content?.toLowerCase().includes(searchQuery.toLowerCase())) : messages}
             keyExtractor={(item, index) => item.id != null ? `m-${item.id}` : `idx-${index}-${item.createdAt || ''}`}
             renderItem={renderMessage}
             inverted={false}
@@ -1064,4 +1101,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderBottomWidth: 0.5,
+    gap: Spacing.two,
+  },
+  searchInput: { flex: 1, fontSize: 16, paddingVertical: 0 },
 });

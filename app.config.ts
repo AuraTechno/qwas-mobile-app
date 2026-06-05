@@ -24,6 +24,7 @@ const config: ExpoConfig = {
       NSPhotoLibraryUsageDescription: 'QWAS needs photo library access to send images.',
       NSPhotoLibraryAddUsageDescription: 'QWAS needs permission to save images to your library.',
       NSContactsUsageDescription: 'QWAS can help you find friends from your contacts.',
+      NSLocationWhenInUseUsageDescription: 'QWAS needs your location to share it in chats.',
       NSSupportsLiveActivities: true,
     },
   },
@@ -54,10 +55,11 @@ const config: ExpoConfig = {
       'android.permission.RECEIVE_BOOT_COMPLETED',
       'android.permission.SYSTEM_ALERT_WINDOW',
       'android.permission.USE_FULL_SCREEN_INTENT',
-    ],
-    blockedPermissions: [
       'android.permission.READ_CONTACTS',
+      'android.permission.ACCESS_FINE_LOCATION',
+      'android.permission.ACCESS_COARSE_LOCATION',
     ],
+    blockedPermissions: [],
     googleServicesFile: './google-services.json',
   },
 

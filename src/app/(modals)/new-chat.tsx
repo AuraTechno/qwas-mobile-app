@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react';
-import { View, TextInput, FlatList, StyleSheet, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, TextInput, FlatList, StyleSheet, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -88,12 +88,30 @@ export default function NewChatModal() {
               <ActivityIndicator color={theme.accent} />
             </View>
           ) : query.trim().length < 2 ? (
-            <View style={styles.center}>
-              <Icon name="UserPlus" size={48} color={theme.textTertiary} />
+            <ScrollView contentContainerStyle={styles.center}>
+              <Pressable
+                onPress={() => router.replace('/(modals)/new-group')}
+                style={({ pressed }) => [styles.quickAction, { backgroundColor: theme.bgSecondary, opacity: pressed ? 0.6 : 1 }]}
+              >
+                <Icon name="Users" size={22} color={theme.accent} />
+                <ThemedText variant="headline" color="accent" style={{ marginLeft: Spacing.three }}>
+                  Создать группу
+                </ThemedText>
+              </Pressable>
+              <Pressable
+                onPress={() => router.replace('/(modals)/new-group')}
+                style={({ pressed }) => [styles.quickAction, { backgroundColor: theme.bgSecondary, opacity: pressed ? 0.6 : 1 }]}
+              >
+                <Icon name="Megaphone" size={22} color={theme.accent} />
+                <ThemedText variant="headline" color="accent" style={{ marginLeft: Spacing.three }}>
+                  Создать канал
+                </ThemedText>
+              </Pressable>
+              <Icon name="UserPlus" size={48} color={theme.textTertiary} style={{ marginTop: Spacing.six }} />
               <ThemedText variant="subhead" color="secondary" style={{ marginTop: Spacing.three, textAlign: 'center' }}>
                 Введите минимум 2 символа{'\n'}чтобы найти пользователя
               </ThemedText>
-            </View>
+            </ScrollView>
           ) : users.length === 0 ? (
             <View style={styles.center}>
               <ThemedText variant="subhead" color="secondary">Никого не найдено</ThemedText>
@@ -140,7 +158,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.three,
-    gap: Spacing.three,
+    gap: Spacing.two,
     borderBottomWidth: 0.5,
+  },
+  quickAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: Spacing.four,
+    borderRadius: Radius.md,
+    width: '90%',
+    marginBottom: Spacing.two,
   },
 });
