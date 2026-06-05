@@ -55,6 +55,7 @@ export default function ChatScreen() {
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [typingUsers, setTypingUsers] = useState<Set<number>>(new Set());
+  const [showScrollDown, setShowScrollDown] = useState(false);
 
   const listRef = useRef<FlatList<Message>>(null);
 
@@ -188,6 +189,12 @@ export default function ChatScreen() {
       setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 100);
     }
   }, [page, messages.length]);
+
+  useEffect(() => {
+    if (chatId && chat) {
+      apiPost(`/api/v1/chats/${chatId}/read`, {}).catch(() => {});
+    }
+  }, [chatId, messages.length]);
 
   const chatTitle =
     chat?.name ||
@@ -539,12 +546,27 @@ export default function ChatScreen() {
             contentContainerStyle={{ paddingVertical: Spacing.three }}
             onEndReached={() => loadMessages(false)}
             onEndReachedThreshold={0.3}
+            onScroll={(e) => {
+              const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+              const distanceFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height);
+              setShowScrollDown(distanceFromBottom > 200);
+            }}
+            scrollEventThrottle={64}
             ListFooterComponent={
               loadingMore ? (
                 <ActivityIndicator color={theme.accent} style={{ paddingVertical: Spacing.four }} />
               ) : null
             }
           />
+
+          {showScrollDown && (
+            <Pressable
+              onPress={() => listRef.current?.scrollToEnd({ animated: true })}
+              style={[styles.scrollDownBtn, { backgroundColor: theme.bgSecondary, borderColor: theme.hairline }]}
+            >
+              <Icon name="ChevronRight" size={18} color={theme.accent} style={{ transform: [{ rotate: '90deg' }] }} />
+            </Pressable>
+          )}
 
           {(replyingTo || editingMessage) && (
             <View style={[styles.replyEditBar, { backgroundColor: theme.bgSecondary, borderTopColor: theme.hairline }]}>
@@ -735,5 +757,21 @@ const styles = StyleSheet.create({
     height: 28,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  scrollDownBtn: {
+    position: 'absolute',
+    right: Spacing.four,
+    bottom: 80,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0.5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
 });
