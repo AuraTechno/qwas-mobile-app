@@ -57,7 +57,7 @@ export type Message = {
   chatId: number;
   senderId: number;
   sender?: User;
-  type: 'text' | 'image' | 'video' | 'voice' | 'file' | 'system' | 'location' | 'contact';
+  type: 'text' | 'image' | 'video' | 'video_note' | 'voice' | 'file' | 'system' | 'location' | 'contact' | 'poll';
   content: string;
   mediaUrl?: string | null;
   mediaMeta?: string | null;
@@ -67,7 +67,27 @@ export type Message = {
   editedAt?: string | null;
   isDeleted: boolean;
   createdAt: string;
+  expiresAt?: string | null;
   reactions?: Reaction[];
+};
+
+export type Poll = {
+  id: number;
+  messageId: number;
+  question: string;
+  isAnonymous: boolean;
+  isMultiple: boolean;
+  options: PollOption[];
+  totalVotes: number;
+  myVotes: number[];
+  closesAt?: string | null;
+};
+
+export type PollOption = {
+  id: number;
+  text: string;
+  votes: number;
+  voters?: number[];
 };
 
 export type Reaction = {
@@ -75,6 +95,15 @@ export type Reaction = {
   userId: number;
   emoji: string;
   createdAt: string;
+};
+
+export type WallpaperPreset = {
+  id: string;
+  name: string;
+  type: 'gradient' | 'solid' | 'pattern';
+  lightColors?: [string, string];
+  darkColors?: [string, string];
+  pattern?: 'dots' | 'grid' | 'waves';
 };
 
 export type Call = {

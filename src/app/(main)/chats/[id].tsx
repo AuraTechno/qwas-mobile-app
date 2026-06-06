@@ -34,13 +34,20 @@ import MessageContextMenu, { type MessageAction } from '@/components/message-con
 import AttachSheet, { type AttachAction } from '@/components/attach-sheet';
 import VoiceRecorder from '@/components/voice-recorder';
 import VoicePlayer from '@/components/voice-player';
+import VideoNote from '@/components/video-note';
+import PollMessage from '@/components/poll-message';
+import TTLCountdown from '@/components/ttl-countdown';
+import PollCreateModal from '@/components/poll-create-modal';
+import TTLPicker from '@/components/ttl-picker';
+import SwipeableMessage from '@/components/swipeable-message';
 import { useTheme } from '@/hooks/use-theme';
 import { Spacing } from '@/constants/theme';
 import { apiGet, apiPost, apiPatch, apiDelete, apiUpload, mediaUrl } from '@/api/client';
 import { useAuth } from '@/store/auth';
 import { useWebSocket } from '@/store/websocket';
+import { useSettings, WALLPAPERS } from '@/store/settings';
 import type { Chat, Message, ChatMember } from '@/types';
-import { Image as RNImage, ImageBackground } from 'react-native';
+import { Image as RNImage, ImageBackground } from 'expo-image';
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -73,6 +80,13 @@ export default function ChatScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showPollCreate, setShowPollCreate] = useState(false);
+  const [ttl, setTtl] = useState<number | null>(null);
+  const [showTTLPicker, setShowTTLPicker] = useState(false);
+
+  const wallpaper = useSettings((s) => s.wallpaper);
+  const wp = WALLPAPERS.find((w) => w.id === wallpaper) || WALLPAPERS[0];
+  const useGradient = wallpaper !== 'none';
 
   const listRef = useRef<FlatList<Message>>(null);
 
@@ -251,12 +265,15 @@ export default function ChatScreen() {
     }
 
     const replyToId = replyingTo?.id ?? null;
+    const expiresInSec = ttl;
     setReplyingTo(null);
+    setTtl(null);
     try {
       const msg = await apiPost<Message>(`/api/v1/chats/${chatId}/messages`, {
         type: 'text',
         content: text,
         replyToId,
+        expiresInSec,
       });
       setMessages((prev) => [...prev, msg]);
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
@@ -457,6 +474,7 @@ export default function ChatScreen() {
         content: '🎤 Голосовое сообщение',
         mediaUrl: uploaded.url,
         mediaMeta: JSON.stringify({ durationMs }),
+        expiresInSec: ttl,
       });
       setMessages((prev) => [...prev, msg]);
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
@@ -465,11 +483,75 @@ export default function ChatScreen() {
     }
   }
 
-  async function handleAttachAction(action: 'photo' | 'camera' | 'video' | 'document' | 'location' | 'contact' | 'voice') {
+  async function sendVideoNote(uri: string, durationMs: number) {
+    try {
+      const form = new FormData();
+      form.append('file', { uri, type: 'video/mp4', name: `vnote-${Date.now()}.mp4` } as any);
+      const uploaded = await apiUpload<{ url: string }>('/api/v1/media/upload', form);
+      const msg = await apiPost<Message>(`/api/v1/chats/${chatId}/messages`, {
+        type: 'video_note',
+        content: '⭕ Видеосообщение',
+        mediaUrl: uploaded.url,
+        mediaMeta: JSON.stringify({ durationMs }),
+        expiresInSec: ttl,
+      });
+      setMessages((prev) => [...prev, msg]);
+      setTtl(null);
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function recordVideoNote() {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Нужен доступ', 'Разрешите доступ к камере');
+        return;
+      }
+      const res = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        quality: 0.7,
+        videoMaxDuration: 60,
+      });
+      if (res.canceled || !res.assets[0]) return;
+      const asset = res.assets[0];
+      const durMs = asset.duration ? Math.floor(asset.duration * 1000) : 0;
+      await sendVideoNote(asset.uri, durMs);
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Ошибка', 'Не удалось записать видеосообщение');
+    }
+  }
+
+  async function createPoll(data: { question: string; isAnonymous: boolean; isMultiple: boolean; options: string[] }) {
+    try {
+      const msg = await apiPost<Message>(`/api/v1/chats/${chatId}/messages`, {
+        type: 'poll',
+        content: data.question,
+        poll: {
+          question: data.question,
+          isAnonymous: data.isAnonymous,
+          isMultiple: data.isMultiple,
+          options: data.options,
+        },
+      });
+      setMessages((prev) => [...prev, msg]);
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Ошибка', 'Не удалось создать опрос');
+    }
+  }
+
+  async function handleAttachAction(action: 'photo' | 'camera' | 'video' | 'video_note' | 'poll' | 'document' | 'location' | 'contact' | 'voice') {
     switch (action) {
       case 'photo': await pickImage(); break;
       case 'camera': await takePhoto(); break;
       case 'video': await pickVideo(); break;
+      case 'video_note': await recordVideoNote(); break;
+      case 'poll': setShowPollCreate(true); break;
       case 'document': await pickDocument(); break;
       case 'location': await sendLocation(); break;
       case 'contact': await sendContact(); break;
@@ -541,6 +623,7 @@ export default function ChatScreen() {
             )}
           </View>
         ) : null}
+        <SwipeableMessage onReply={() => setReplyingTo(item)}>
         <View style={{ maxWidth: '75%' }}>
           {showName ? (
             <ThemedText variant="caption1" color="secondary" style={styles.senderName}>
@@ -622,6 +705,34 @@ export default function ChatScreen() {
                 durationSec={(() => {
                   const m = parseMeta(item.mediaMeta);
                   return Math.floor((m.durationMs || 0) / 1000);
+                })()}
+                isMe={isMe}
+              />
+            ) : item.type === 'video_note' && item.mediaUrl ? (
+              <VideoNote
+                uri={item.mediaUrl}
+                durationSec={Math.floor((parseMeta(item.mediaMeta).durationMs || 0) / 1000) || 5}
+                isMe={isMe}
+                accentColor={isMe ? 'rgba(255,255,255,0.85)' : theme.accent}
+                onLongPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  if (selectMode) {
+                    setSelectedIds((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(item.id)) next.delete(item.id);
+                      else next.add(item.id);
+                      return next;
+                    });
+                  } else {
+                    setActionMessage(item);
+                  }
+                }}
+              />
+            ) : item.type === 'poll' ? (
+              <PollMessage
+                pollId={(() => {
+                  const m = parseMeta(item.mediaMeta);
+                  return m.pollId || 0;
                 })()}
                 isMe={isMe}
               />
@@ -717,6 +828,7 @@ export default function ChatScreen() {
               {item.editedAt ? ' · изм.' : ''}
               {isMe ? ' ✓✓' : ''}
             </ThemedText>
+            {item.expiresAt && <TTLCountdown expiresAt={item.expiresAt} isMe={isMe} />}
           </Pressable>
           {item.reactions && item.reactions.length > 0 && (
             <Animated.View entering={FadeInDown.duration(160)} style={[styles.reactions, isMe ? styles.reactionsMe : styles.reactionsThem]}>
@@ -742,6 +854,7 @@ export default function ChatScreen() {
             </Animated.View>
           )}
         </View>
+        </SwipeableMessage>
       </View>
       </Animated.View>
     );
@@ -800,7 +913,19 @@ export default function ChatScreen() {
           ),
         }}
       />
-      <SafeAreaView edges={['bottom']} style={[styles.container, { backgroundColor: theme.bg }]}>
+      <SafeAreaView edges={['bottom']} style={[styles.container]}>
+        {useGradient ? (
+          <ImageBackground
+            source={undefined}
+            style={StyleSheet.absoluteFill}
+          >
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: wp.light[0] }]}>
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: wp.light[1], opacity: 0.4 }]} />
+            </View>
+          </ImageBackground>
+        ) : (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.bg }]} />
+        )}
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={headerHeight}
@@ -962,7 +1087,7 @@ export default function ChatScreen() {
               </Pressable>
             </View>
           ) : (
-          <View style={[styles.composer, { backgroundColor: theme.bg, borderTopColor: theme.hairline }]}>
+          <View style={[styles.composer, { backgroundColor: useGradient ? 'rgba(255,255,255,0.85)' : theme.bg, borderTopColor: theme.hairline }]}>
             <Pressable
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -971,6 +1096,15 @@ export default function ChatScreen() {
               style={({ pressed }) => [styles.attachBtn, { transform: [{ scale: pressed ? 0.9 : 1 }] }]}
             >
               <Icon name="Paperclip" size={22} color={theme.accent} />
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowTTLPicker(true);
+              }}
+              style={({ pressed }) => [styles.ttlBtn, { backgroundColor: ttl ? theme.accent : 'transparent', transform: [{ scale: pressed ? 0.9 : 1 }] }]}
+            >
+              <Icon name="Clock" size={18} color={ttl ? '#fff' : theme.textSecondary} />
             </Pressable>
             <View style={[styles.composerInput, { backgroundColor: theme.bgSecondary }]}>
               <TextInput
@@ -1038,6 +1172,17 @@ export default function ChatScreen() {
         onClose={() => setShowVoiceRecorder(false)}
         onSend={sendVoice}
       />
+      <PollCreateModal
+        visible={showPollCreate}
+        onClose={() => setShowPollCreate(false)}
+        onCreate={createPoll}
+      />
+      <TTLPicker
+        visible={showTTLPicker}
+        current={ttl}
+        onClose={() => setShowTTLPicker(false)}
+        onSelect={(s) => setTtl(s)}
+      />
     </>
     </GestureHandlerRootView>
   );
@@ -1099,6 +1244,13 @@ const styles = StyleSheet.create({
   attachBtn: {
     width: 36,
     height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ttlBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },

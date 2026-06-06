@@ -10,7 +10,7 @@ import { Icon } from '@/components/icon';
 import { useTheme } from '@/hooks/use-theme';
 import { Spacing, Radius } from '@/constants/theme';
 
-export type AttachAction = 'photo' | 'camera' | 'video' | 'document' | 'location' | 'contact' | 'voice';
+export type AttachAction = 'photo' | 'camera' | 'video' | 'video_note' | 'poll' | 'document' | 'location' | 'contact' | 'voice';
 
 interface Props {
   visible: boolean;
@@ -19,13 +19,15 @@ interface Props {
 }
 
 const ACTIONS: { id: AttachAction; icon: any; label: string; color: string }[] = [
-  { id: 'photo',    icon: 'ImagePlus',  label: 'Фото',            color: '#5ac8fa' },
-  { id: 'camera',   icon: 'Camera',     label: 'Камера',          color: '#ff3b30' },
-  { id: 'video',    icon: 'Video',      label: 'Видео',           color: '#af52de' },
-  { id: 'document', icon: 'FileText',   label: 'Файл',            color: '#007aff' },
-  { id: 'location', icon: 'MapPin',     label: 'Местоположение',  color: '#34c759' },
-  { id: 'contact',  icon: 'UserPlus',   label: 'Контакт',         color: '#ff9500' },
-  { id: 'voice',    icon: 'Mic',        label: 'Голосовое',       color: '#ff2d55' },
+  { id: 'photo',      icon: 'ImagePlus',  label: 'Фото',             color: '#5ac8fa' },
+  { id: 'camera',     icon: 'Camera',     label: 'Камера',           color: '#ff3b30' },
+  { id: 'video',      icon: 'Video',      label: 'Видео',            color: '#af52de' },
+  { id: 'video_note', icon: 'Circle',     label: 'Кружок',           color: '#ff375f' },
+  { id: 'poll',       icon: 'BarChart2',  label: 'Опрос',            color: '#5856d6' },
+  { id: 'document',   icon: 'FileText',   label: 'Файл',             color: '#007aff' },
+  { id: 'location',   icon: 'MapPin',     label: 'Местоположение',   color: '#34c759' },
+  { id: 'contact',    icon: 'UserPlus',   label: 'Контакт',          color: '#ff9500' },
+  { id: 'voice',      icon: 'Mic',        label: 'Голосовое',        color: '#ff2d55' },
 ];
 
 export default function AttachSheet({ visible, onClose, onSelect }: Props) {
@@ -97,6 +99,7 @@ const styles = StyleSheet.create({
     width: '25%',
     alignItems: 'center',
     paddingVertical: Spacing.three,
+    minHeight: 92,
   },
   iconCircle: {
     width: 56,

@@ -11,7 +11,7 @@ import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
 import { Icon } from '@/components/icon';
 import { useAuth } from '@/store/auth';
-import { useSettings, type ThemeMode } from '@/store/settings';
+import { useSettings, type ThemeMode, WALLPAPERS } from '@/store/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { Spacing, Radius } from '@/constants/theme';
 import Constants from 'expo-constants';
@@ -20,7 +20,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { user, logout } = useAuth();
-  const { theme: themeMode, accentColor, pushEnabled, soundEnabled, vibrateEnabled, setTheme, setAccent, setPush, setSound, setVibrate } = useSettings();
+  const { theme: themeMode, accentColor, pushEnabled, soundEnabled, vibrateEnabled, wallpaper, setTheme, setAccent, setPush, setSound, setVibrate, setWallpaper } = useSettings();
 
   const ACCENT_OPTIONS = [
     { name: 'Синий', value: '#007AFF' },
@@ -121,6 +121,13 @@ export default function SettingsScreen() {
               })}
             </View>
           </View>
+          <Row
+            icon="Image"
+            title="Обои чата"
+            value={wallpaper === 'none' ? 'Без фона' : WALLPAPERS.find((w) => w.id === wallpaper)?.name || 'Без фона'}
+            theme={theme}
+            onPress={() => router.push('/(modals)/wallpapers')}
+          />
         </View>
 
         <View style={styles.section}>

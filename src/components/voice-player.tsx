@@ -11,6 +11,8 @@ import { Icon } from '@/components/icon';
 import { useTheme } from '@/hooks/use-theme';
 import { Spacing } from '@/constants/theme';
 
+const SPEED_OPTIONS = [0.5, 1, 1.5, 2] as const;
+
 interface Props {
   uri: string;
   durationSec?: number;
@@ -25,8 +27,16 @@ export default function VoicePlayer({ uri, durationSec = 0, isMe, isPlaying, onP
   const [loading, setLoading] = useState(false);
   const [pos, setPos] = useState(0);
   const [dur, setDur] = useState(durationSec);
+  const [speed, setSpeed] = useState<number>(1);
+  const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
   const playing = isPlaying ?? false;
   const internalPlaying = useRef(false);
+
+  useEffect(() => {
+    if (sound) {
+      sound.setRateAsync(speed, true).catch(() => {});
+    }
+  }, [sound, speed]);
 
   useEffect(() => {
     return () => {
@@ -118,12 +128,63 @@ export default function VoicePlayer({ uri, durationSec = 0, isMe, isPlaying, onP
       >
         {`${Math.floor(pos / 60)}:${String(pos % 60).padStart(2, '0')}`}
       </ThemedText>
+      <Pressable
+        onPress={() => setSpeedMenuOpen((v) => !v)}
+        style={[styles.speedBtn, { backgroundColor: isMe ? 'rgba(255,255,255,0.2)' : theme.bgTertiary }]}
+      >
+        <ThemedText variant="caption2" style={{ color: isMe ? '#fff' : theme.text, fontWeight: '700' }}>
+          {speed}x
+        </ThemedText>
+      </Pressable>
+      {speedMenuOpen && (
+        <View style={[styles.speedMenu, { backgroundColor: theme.bgSecondary, borderColor: theme.hairline }]}>
+          {SPEED_OPTIONS.map((s) => (
+            <Pressable
+              key={s}
+              onPress={() => { setSpeed(s); setSpeedMenuOpen(false); }}
+              style={({ pressed }) => [styles.speedOpt, { opacity: pressed ? 0.5 : 1 }]}
+            >
+              <ThemedText
+                variant="caption1"
+                style={{ color: s === speed ? theme.accent : theme.text, fontWeight: s === speed ? '700' : '400' }}
+              >
+                {s}x
+              </ThemedText>
+            </Pressable>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', minWidth: 180 },
+  row: { flexDirection: 'row', alignItems: 'center', minWidth: 180, position: 'relative' },
   btn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
   waveform: { flex: 1, flexDirection: 'row', alignItems: 'center', height: 24 },
+  speedBtn: {
+    marginLeft: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  speedMenu: {
+    position: 'absolute',
+    bottom: 36,
+    right: 0,
+    borderRadius: 10,
+    borderWidth: 0.5,
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+    zIndex: 10,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+  },
+  speedOpt: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
 });
